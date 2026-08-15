@@ -9,6 +9,7 @@ from pathlib import Path
 
 from lxml import etree
 
+from circuit_vault.formats import normalize_newlines
 from circuit_vault.parser import (
     ParseError,
     Project,
@@ -99,7 +100,7 @@ def circuit_health(
         from circuit_vault.parser import circuit_to_xml_bytes
 
         current = circuit_to_xml_bytes(get_circuit_element(project, name))
-    if current.strip() == final_bytes.strip():
+    if normalize_newlines(current.strip()) == normalize_newlines(final_bytes.strip()):
         return HealthState.HEALTHY
     return HealthState.CHANGED
 

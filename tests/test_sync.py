@@ -30,6 +30,9 @@ def _bare_remote(tmp_path: Path) -> Path:
 
 def test_sync_commits_and_nothing_to_commit_ok(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
     work = tmp_path / "work"
     work.mkdir()
     circ = work / "main.circ"
@@ -59,6 +62,9 @@ def test_sync_commits_and_nothing_to_commit_ok(tmp_path, monkeypatch):
 
 def test_push_failure_surfaces_retry(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
     work = tmp_path / "work"
     work.mkdir()
     circ = work / "main.circ"
@@ -76,6 +82,9 @@ def test_push_failure_surfaces_retry(tmp_path, monkeypatch):
 
 def test_first_run_and_token_in_keyring(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
     config_path().write_text("{}", encoding="utf-8")
     assert first_run_needed() is True
 

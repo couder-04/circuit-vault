@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from circuit_vault.core import CircuitVaultApp, first_run_needed, last_circ_path, load_session
+from circuit_vault.formats import CircFormat, credential_store_name, detect_format, format_label
 from circuit_vault.promptgen import components_catalog
 from circuit_vault.validator import HealthState
 
@@ -81,7 +82,9 @@ class SetupWizard(QDialog):
         self.email.setPlaceholderText("you@school.edu")
         self.token = QLineEdit()
         self.token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.token.setPlaceholderText("GitHub personal access token (stored in keychain)")
+        self.token.setPlaceholderText(
+            f"GitHub personal access token (stored in {credential_store_name()})"
+        )
         form.addRow("GitHub repo URL", self.repo)
         form.addRow("Name (optional)", self.name)
         form.addRow("Email (optional)", self.email)
@@ -302,11 +305,16 @@ class MainWindow(QMainWindow):
             self.hint.setText(f"Waiting for a readable file… ({exc})")
             return
         self.active_label.setText(self.app_core.circ_path.name)
+        fmt = detect_format(self.app_core.project) if self.app_core.project else None
+        if fmt is not None:
+            self.file_title.setText(f"My File — {format_label(fmt)}")
         self._clear_list()
         for row in self.app_core.status():
             self.list_layout.addWidget(CircuitRow(row.name, row.health, self._file_action))
         self.hint.setText(self.app_core.plain_status_summary())
         self._refresh_sync_bar()
+        if hasattr(self, "build_format") and self.build_format.currentData() == "auto":
+            self._rebuild_component_checks()
 
     def _file_action(self, name: str, action: str) -> None:
         if action == "restore":
@@ -476,20 +484,23 @@ class MainWindow(QMainWindow):
         self.desc.setMaximumHeight(80)
         layout.addWidget(self.desc)
 
+        fmt_row = QHBoxLayout()
+        fmt_row.addWidget(QLabel("Target Logisim"))
+        self.build_format = QComboBox()
+        self.build_format.addItem("Auto (from open file)", "auto")
+        self.build_format.addItem("Logisim Evolution", CircFormat.EVOLUTION.value)
+        self.build_format.addItem("Logisim (classic)", CircFormat.CLASSIC.value)
+        self.build_format.currentIndexChanged.connect(self._rebuild_component_checks)
+        fmt_row.addWidget(self.build_format, stretch=1)
+        layout.addLayout(fmt_row)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        host = QWidget()
-        self.comp_layout = QVBoxLayout(host)
+        self._comp_host = QWidget()
+        self.comp_layout = QVBoxLayout(self._comp_host)
         self.comp_checks: dict[str, QCheckBox] = {}
-        for cat, items in components_catalog().items():
-            box = QGroupBox(cat)
-            gl = QVBoxLayout(box)
-            for name in items:
-                cb = QCheckBox(name)
-                self.comp_checks[name] = cb
-                gl.addWidget(cb)
-            self.comp_layout.addWidget(box)
-        scroll.setWidget(host)
+        self._rebuild_component_checks()
+        scroll.setWidget(self._comp_host)
         scroll.setMinimumHeight(160)
         layout.addWidget(scroll)
 
@@ -555,6 +566,30 @@ class MainWindow(QMainWindow):
         layout.addWidget(build_btn)
         return w
 
+    def _rebuild_component_checks(self) -> None:
+        while self.comp_layout.count():
+            item = self.comp_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.comp_checks.clear()
+        fmt = self._selected_build_format()
+        for cat, items in components_catalog(fmt).items():
+            box = QGroupBox(cat)
+            gl = QVBoxLayout(box)
+            for name in items:
+                cb = QCheckBox(name)
+                self.comp_checks[name] = cb
+                gl.addWidget(cb)
+            self.comp_layout.addWidget(box)
+
+    def _selected_build_format(self) -> CircFormat:
+        data = self.build_format.currentData()
+        if data == "auto" or data is None:
+            if self.app_core.project is not None:
+                return detect_format(self.app_core.project)
+            return CircFormat.EVOLUTION
+        return CircFormat(str(data))
+
     def _add_custom_comp(self) -> None:
         name = self.custom_edit.text().strip()
         if name and name not in self._custom_components:
@@ -567,11 +602,13 @@ class MainWindow(QMainWindow):
         return picked + list(self._custom_components)
 
     def _gen_prompt(self) -> None:
+        fmt = self._selected_build_format()
         prompt = self.app_core.build_prompt(
             self.desc.toPlainText().strip(),
             self._selected_components(),
             self.inputs.text().strip(),
             self.outputs.text().strip(),
+            fmt,
         )
         self.prompt_box.setPlainText(prompt)
 
@@ -586,7 +623,10 @@ class MainWindow(QMainWindow):
     def _validate_paste(self) -> None:
         from circuit_vault.promptgen import validate_generated
 
-        ok, preview = validate_generated(self.xml_box.toPlainText().encode("utf-8"))
+        fmt = self._selected_build_format()
+        ok, preview = validate_generated(
+            self.xml_box.toPlainText().encode("utf-8"), target_format=fmt
+        )
         self._build_preview = preview
         if not ok:
             self.preview_label.setText(f"Not valid yet: {preview.get('error')}")

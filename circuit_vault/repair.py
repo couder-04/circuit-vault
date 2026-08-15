@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from lxml import etree
 
+from circuit_vault.formats import CircFormat, wrap_circuit_as_project
 from circuit_vault.parser import ParseError, find_circuit_span, list_circuits, load, parse_circuit_bytes
 from circuit_vault.validator import validate_file
 
@@ -22,8 +23,15 @@ class RepairResult:
     resolvable_deps: list[str] = field(default_factory=list)
 
 
-def repair_circuit(xml_bytes: bytes) -> RepairResult:
+def repair_circuit(
+    xml_bytes: bytes,
+    *,
+    target_format: CircFormat | str | None = None,
+) -> RepairResult:
     """Attempt to repair a single <circuit>...</circuit> snippet."""
+    from circuit_vault.formats import normalize_format
+
+    fmt = normalize_format(target_format)
     changes: list[str] = []
     data = _strip_encoding_junk(xml_bytes, changes)
 
@@ -55,7 +63,7 @@ def repair_circuit(xml_bytes: bytes) -> RepairResult:
 
     name = el.get("name") or "?"
     # Structural check in isolation — wrap in a minimal project for validator.
-    wrapped = _wrap_as_project(data.strip())
+    wrapped = _wrap_as_project(data.strip(), fmt)
     vr = validate_file_bytes(wrapped)
     # Dangling refs are expected for a lone circuit; filter those for circuit-only repair.
     hard_errors = [
@@ -76,7 +84,7 @@ def repair_circuit(xml_bytes: bytes) -> RepairResult:
         data2, more = _drop_junk_wires(data, aggressive=True)
         changes.extend(more)
         data = data2
-        wrapped = _wrap_as_project(data.strip())
+        wrapped = _wrap_as_project(data.strip(), fmt)
         vr = validate_file_bytes(wrapped)
         remaining_wire = [e for e in vr.errors if "malformed wire" in e.lower()]
 
@@ -297,14 +305,8 @@ def _drop_junk_wires(data: bytes, *, aggressive: bool = False) -> tuple[bytes, l
     return out, notes
 
 
-def _wrap_as_project(circuit_xml: bytes) -> bytes:
-    return (
-        b'<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
-        b'<project source="3.8.0" version="1.0">\n'
-        b'<lib desc="#Wiring" name="0"/>\n'
-        b'<lib desc="#Gates" name="1"/>\n'
-        b'<main name="x"/>\n'
-        b"<options/>\n"
-        + circuit_xml
-        + b"\n</project>\n"
-    )
+def _wrap_as_project(
+    circuit_xml: bytes,
+    fmt: CircFormat = CircFormat.EVOLUTION,
+) -> bytes:
+    return wrap_circuit_as_project(circuit_xml, fmt)

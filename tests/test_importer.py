@@ -81,3 +81,6 @@ def test_classic_target_merge(tmp_path):
     result = merge(["HealthyOR"], target, "replace", incoming_path=SHARED)
     assert result.ok, result.message
     assert validate_project(load(target)).ok
+    # SHARED is Evolution; classic target should surface a format warning
+    assert result.format_warning
+    assert "Format mismatch" in result.format_warning

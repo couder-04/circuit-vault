@@ -11,6 +11,13 @@ import keyring
 
 from circuit_vault import gitops
 from circuit_vault.dependencies import resolve_restore_set
+from circuit_vault.formats import (
+    CircFormat,
+    config_dir,
+    detect_format,
+    format_label,
+    normalize_format,
+)
 from circuit_vault.importer import IncomingCircuit, MergeResult, merge as importer_merge
 from circuit_vault.importer import scan_incoming
 from circuit_vault.parser import (
@@ -35,7 +42,7 @@ KEYRING_SERVICE = "circuit-vault"
 
 
 def config_path() -> Path:
-    base = Path.home() / ".config" / "circuit-vault"
+    base = config_dir()
     base.mkdir(parents=True, exist_ok=True)
     return base / "config.json"
 
@@ -92,6 +99,7 @@ class OpenResult:
     path: Path | None = None
     message: str = ""
     circuit_count: int = 0
+    circ_format: CircFormat | None = None
 
 
 @dataclass
@@ -195,12 +203,22 @@ class CircuitVaultApp:
             bak = Path(str(bak_raw))
             self._last_backup = bak if bak.exists() else None
         names = list_circuits(project)
+        fmt = detect_format(project)
         return OpenResult(
             ok=True,
             path=path,
-            message=f"Opened {path.name} ({len(names)} circuits)",
+            message=(
+                f"Opened {path.name} ({len(names)} circuits, {format_label(fmt)})"
+            ),
             circuit_count=len(names),
+            circ_format=fmt,
         )
+
+    def project_format(self) -> CircFormat:
+        """Format of the open project, or preferred session default."""
+        if self.project is not None:
+            return detect_format(self.project)
+        return normalize_format(load_session().get("preferred_format"))
 
     def _remember_circ(self, path: Path) -> None:
         path = path.resolve()
@@ -367,6 +385,7 @@ class CircuitVaultApp:
             "git_name",
             "git_email",
             "setup_complete",
+            "preferred_format",
         }
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if updates:
@@ -580,12 +599,26 @@ class CircuitVaultApp:
         components: list[str],
         inputs: str = "",
         outputs: str = "",
-        target_format: str = "evolution",
+        target_format: str | CircFormat | None = None,
     ) -> str:
-        return generate_prompt(description, components, inputs, outputs, target_format)
+        fmt = (
+            normalize_format(target_format)
+            if target_format is not None
+            else self.project_format()
+        )
+        save_session(preferred_format=fmt.value)
+        return generate_prompt(description, components, inputs, outputs, fmt)
 
     def build_merge(self, xml_bytes: bytes, target: str | Path) -> BuildMergeResult:
-        ok, preview = validate_generated(xml_bytes)
+        target_path = Path(target)
+        try:
+            target_project = load(target_path)
+            fmt = detect_format(target_project)
+        except ParseError:
+            fmt = self.project_format()
+            target_project = None
+
+        ok, preview = validate_generated(xml_bytes, target_format=fmt)
         if not ok:
             return BuildMergeResult(
                 ok=False,
@@ -603,9 +636,8 @@ class CircuitVaultApp:
             text = b"\n".join(lines).strip()
 
         name = preview.get("name") or "Built Circuit"
-        target_path = Path(target)
         try:
-            project = load(target_path)
+            project = target_project if target_project is not None else load(target_path)
         except ParseError as exc:
             return BuildMergeResult(ok=False, message=str(exc), preview=preview)
 

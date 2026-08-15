@@ -1,8 +1,51 @@
 # Circuit Vault
 
-Protect Logisim / Logisim Evolution `.circ` files: save per-circuit **finals**, restore one circuit without touching the rest, import shared work, and build from a Claude prompt. GitHub backs up your project folder automatically.
+Protect **Logisim** and **Logisim Evolution** `.circ` files on **Windows**, **macOS**, and **Linux**: save per-circuit **finals**, restore one circuit without touching the rest, import shared work, and build from a Claude prompt. GitHub backs up your project folder automatically.
 
-Most people only need the **GUI**. Follow the steps below in order if this is your first time.
+Most people only need the **GUI**. Follow the map below, then the matching sections.
+
+### Big picture (first-time path)
+
+```mermaid
+flowchart TD
+  A[1. GitHub account] --> B[2. Create empty repo<br/>copy HTTPS URL]
+  B --> C[3. Create PAT token<br/>copy ghp_…]
+  C --> D[4. Install Circuit Vault<br/>pip install]
+  D --> E[5. Start GUI<br/>circuit-vault gui]
+  E --> F[6. Setup wizard<br/>paste URL + token<br/>choose .circ]
+  F --> G[7. Everyday use]
+  G --> H[My File<br/>Mark Final / Restore]
+  G --> I[Import / Build]
+  G --> J[History / Settings]
+
+  style A fill:#e8f5e9
+  style B fill:#e8f5e9
+  style C fill:#e8f5e9
+  style D fill:#e3f2fd
+  style E fill:#e3f2fd
+  style F fill:#e3f2fd
+  style G fill:#fff8e1
+  style H fill:#fff8e1
+  style I fill:#fff8e1
+  style J fill:#fff8e1
+```
+
+| When | Do this |
+|------|---------|
+| **Once** (green) | Account → empty repo → PAT |
+| **Once per computer** (blue) | Install → open GUI → finish wizard |
+| **Daily** (yellow) | Mark Final / Restore / Import / Build |
+
+---
+
+## Supported platforms & Logisim apps
+
+| | Supported |
+|--|--|
+| OS | Windows 10/11, macOS, Linux |
+| Apps | Classic **Logisim** (`.circ` with `source="2.x"`) and **Logisim Evolution** (`source="3.x"`) |
+
+Circuit Vault detects the format from your open file. On **Build**, choose **Auto**, **Evolution**, or **classic** so prompts match the app you use. Importing across formats is allowed with a warning — always open the result in Logisim and verify.
 
 ---
 
@@ -38,7 +81,7 @@ GitHub no longer lets apps use your normal password. A PAT is a special one-time
 1. Open [https://github.com/settings/tokens](https://github.com/settings/tokens)  
    (GitHub → your profile picture → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**)
 2. Click **Generate new token** → **Generate new token (classic)**
-3. **Note**: e.g. `circuit-vault mac`
+3. **Note**: e.g. `circuit-vault`
 4. **Expiration**: pick a date you are comfortable with (e.g. 90 days)
 5. Under **scopes**, check **`repo`** (full control of private repositories)  
    That is enough for Circuit Vault to push your lab files.
@@ -51,12 +94,36 @@ GitHub no longer lets apps use your normal password. A PAT is a special one-time
 
 ---
 
-## Install Circuit Vault (once per Mac)
+## Install Circuit Vault (once per computer)
 
-1. Install **Python 3.11+** and **Git** if needed (`brew install python@3.11 git`)
-2. In Terminal:
+You need **Python 3.11+** and **Git** on your PATH.
+
+### macOS
 
 ```bash
+brew install python@3.11 git   # if needed
+cd /path/to/circuit-vault
+python3 -m pip install -e ".[dev]"
+circuit-vault --help
+```
+
+### Windows
+
+1. Install [Python 3.11+](https://www.python.org/downloads/) (check **Add python.exe to PATH**)
+2. Install [Git for Windows](https://git-scm.com/download/win)
+3. In **PowerShell** or **Command Prompt**:
+
+```powershell
+cd C:\path\to\circuit-vault
+py -3.11 -m pip install -e ".[dev]"
+circuit-vault --help
+```
+
+### Linux
+
+```bash
+# Debian/Ubuntu example
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
 cd /path/to/circuit-vault
 python3 -m pip install -e ".[dev]"
 circuit-vault --help
@@ -72,7 +139,7 @@ If that prints help text, you are ready.
 circuit-vault gui
 ```
 
-A window opens. Quit anytime with **Cmd+Q** or by closing the window. Run `circuit-vault gui` again whenever you want to use it.
+A window opens. Quit anytime by closing the window (macOS: **Cmd+Q** also works). Run `circuit-vault gui` again whenever you want to use it.
 
 ---
 
@@ -85,19 +152,19 @@ When the app asks to **Link GitHub**:
 | **GitHub repo URL** | The URL from step B, e.g. `https://github.com/YOUR_USERNAME/logisim-lab.git` |
 | **Name** (optional) | Your name (shows on commits) |
 | **Email** (optional) | Your email |
-| **Access token** | The PAT from step C (`ghp_…`) — saved in **macOS Keychain**, not a plaintext file |
+| **Access token** | The PAT from step C (`ghp_…`) — saved in the OS credential store (Keychain / Credential Manager / Secret Service), not a plaintext file |
 
 Then:
 
 1. Click **Choose .circ to protect first…**
-2. Pick your Logisim file (the one you edit in Logisim)
+2. Pick your Logisim file (classic or Evolution — both work)
 3. Click **OK**
 
 Circuit Vault does a **test push**. If it works, the bottom bar should show **☁ Synced**.
 
 You can **Cancel** the wizard to try the app offline; link GitHub later under **Settings** (same fields).
 
-**On a new Mac:** install again, create or reuse a PAT, open the GUI, enter repo URL + token once more. Keychain does not copy between Macs.
+**On a new computer:** install again, create or reuse a PAT, open the GUI, enter repo URL + token once more. Credentials do not copy between machines.
 
 ---
 
@@ -114,7 +181,7 @@ Sidebar: **My File** · **Import** · **Build** · **History** · **Settings**
 | Yellow | Changed since final | **Mark Final** (keep new) or **Restore** (go back) |
 | Red | Broken | **Restore** |
 
-Dots refresh every few seconds on **My File**.
+Dots refresh every few seconds on **My File**. The title also shows whether the open file is classic or Evolution.
 
 ---
 
@@ -134,17 +201,20 @@ Dots refresh every few seconds on **My File**.
 3. Choose **Merge into** and clash policy: `replace` / `keep_both` / `skip`
 4. **Fix & Merge Selected** (say **Yes** if asked about a dependency)
 
+If the shared file is Evolution and your target is classic (or the reverse), Circuit Vault warns you — verify in the Logisim app you actually use.
+
 ---
 
 ### Build — generate with Claude
 
-1. Describe the circuit
-2. Check components (add custom names if needed)
-3. Inputs / outputs → **Generate Prompt** → **📋 Copy** (optional: **Open Claude ↗**)
-4. Paste `<circuit>…</circuit>` XML, or **Attach .xml**
-5. **Build & Merge**
+1. Choose **Target Logisim** (Auto / Evolution / classic)
+2. Describe the circuit
+3. Check components (add custom names if needed)
+4. Inputs / outputs → **Generate Prompt** → **Copy** (optional: **Open Claude**)
+5. Paste `<circuit>…</circuit>` XML, or **Attach .xml**
+6. **Build & Merge**
 
-Then open the file in Logisim and **check wiring**.
+Then open the file in Logisim / Logisim Evolution and **check wiring**.
 
 ---
 
@@ -180,4 +250,5 @@ Then open the file in Logisim and **check wiring**.
 - Live file = your `.circ`. Finals = `circuit-vault/` next to it. Backups = `*.bak`.
 - Never put your PAT in the repo or in chat screenshots.
 - If the token expires later: GitHub → new token → **Settings** in the app → paste → **Save & test push**.
-- CLI, two-Mac pull/push, troubleshooting → **[USER_MANUAL.md](USER_MANUAL.md)**.
+- Config lives under `%APPDATA%\circuit-vault\` (Windows) or `~/.config/circuit-vault/` (macOS/Linux).
+- CLI, multi-machine pull/push, troubleshooting → **[USER_MANUAL.md](USER_MANUAL.md)**.

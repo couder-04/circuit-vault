@@ -2,17 +2,38 @@
 
 from __future__ import annotations
 
+from importlib import resources
 from pathlib import Path
 
+from circuit_vault.formats import CircFormat, normalize_format, wrap_circuit_as_project
 from circuit_vault.parser import ParseError, parse_circuit_bytes
-from circuit_vault.validator import validate_file
 from lxml import etree
 
+# Packaged skeletons (installed with the wheel). Fixtures remain a fallback for
+# editable checkouts that still have tests/fixtures.
+_PACKAGE_SKELETONS = Path(__file__).resolve().parent / "skeletons"
 _FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 
+_FALLBACK_SKELETON = (
+    '<circuit name="Example">\n'
+    '  <a name="circuit" val="Example"/>\n'
+    '  <comp lib="0" loc="(80,100)" name="Pin">\n'
+    '    <a name="facing" val="east"/>\n'
+    "  </comp>\n"
+    '  <wire from="(80,100)" to="(120,100)"/>\n'
+    "</circuit>"
+)
 
-def components_catalog() -> dict[str, list[str]]:
-    return {
+
+def components_catalog(target_format: str | CircFormat | None = None) -> dict[str, list[str]]:
+    """
+    Component names suitable for prompts.
+
+    Classic Logisim has a smaller palette; Evolution adds plexers / transistor
+    names commonly used in course labs. Both formats share the core gate set.
+    """
+    fmt = normalize_format(target_format)
+    basic = {
         "BASIC": [
             "AND Gate",
             "OR Gate",
@@ -65,37 +86,52 @@ def components_catalog() -> dict[str, list[str]]:
             "Hex Digit Display",
             "7-Segment Display",
         ],
-        "TRANSISTOR": [
+    }
+    if fmt == CircFormat.EVOLUTION:
+        basic["TRANSISTOR"] = [
             "Transistor",
             "Transmission Gate",
             "NMOS",
             "PMOS",
-        ],
-    }
+        ]
+    return basic
 
 
-def _skeleton(target_format: str) -> str:
-    if target_format == "classic":
+def _skeleton(target_format: CircFormat) -> str:
+    packaged = _PACKAGE_SKELETONS / (
+        "classic_circuit.xml"
+        if target_format == CircFormat.CLASSIC
+        else "evolution_circuit.xml"
+    )
+    if packaged.exists():
+        return packaged.read_text(encoding="utf-8")
+
+    # Traversable package resources (zip / wheel installs)
+    try:
+        pkg = resources.files("circuit_vault.skeletons")
+        name = (
+            "classic_circuit.xml"
+            if target_format == CircFormat.CLASSIC
+            else "evolution_circuit.xml"
+        )
+        return (pkg / name).read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError, AttributeError, TypeError, OSError):
+        pass
+
+    # Dev checkout fallback: extract from fixtures
+    if target_format == CircFormat.CLASSIC:
         path = _FIXTURES / "classic.circ"
-        name = "AND2"
+        circuit_name = "AND2"
     else:
         path = _FIXTURES / "main.circ"
-        name = "Half Adder"
-    if not path.exists():
-        # Fallback minimal authentic shape
-        return (
-            '<circuit name="Example">\n'
-            '  <a name="circuit" val="Example"/>\n'
-            '  <comp lib="0" loc="(80,100)" name="Pin">\n'
-            '    <a name="facing" val="east"/>\n'
-            "  </comp>\n"
-            '  <wire from="(80,100)" to="(120,100)"/>\n'
-            "</circuit>"
-        )
-    from circuit_vault.parser import extract_circuit_raw_bytes, load
+        circuit_name = "Half Adder"
+    if path.exists():
+        from circuit_vault.parser import extract_circuit_raw_bytes, load
 
-    project = load(path)
-    return extract_circuit_raw_bytes(project, name).decode("utf-8")
+        project = load(path)
+        return extract_circuit_raw_bytes(project, circuit_name).decode("utf-8")
+
+    return _FALLBACK_SKELETON
 
 
 def generate_prompt(
@@ -103,12 +139,24 @@ def generate_prompt(
     components: list[str],
     inputs: str,
     outputs: str,
-    target_format: str = "evolution",
+    target_format: str | CircFormat = CircFormat.EVOLUTION,
 ) -> str:
-    fmt = "classic" if target_format == "classic" else "evolution"
+    fmt = normalize_format(target_format)
     skeleton = _skeleton(fmt)
     comps = ", ".join(components) if components else "(none specified — choose appropriate gates)"
-    return f"""You are generating a Logisim {"Evolution" if fmt == "evolution" else "classic"} circuit as XML.
+    product = "Evolution" if fmt == CircFormat.EVOLUTION else "classic"
+    extra = ""
+    if fmt == CircFormat.CLASSIC:
+        extra = (
+            "\n- Do NOT emit <appear>, <clabel>, or nested <tool> under <lib> — "
+            "classic Logisim does not use those.\n"
+        )
+    else:
+        extra = (
+            "\n- Evolution may include <appear>…</appear> and <a name=\"clabel\">; "
+            "match the skeleton if present.\n"
+        )
+    return f"""You are generating a Logisim {product} circuit as XML.
 
 ## Exact <circuit> skeleton (match this shape and attribute style — do not invent new element types)
 ```
@@ -121,8 +169,7 @@ def generate_prompt(
 - Wires must meet component connection points exactly; do not leave floating endpoints.
 - Input/output pins use <comp lib="0" ... name="Pin">; set <a name="output" val="true"/> for outputs.
 - Built-in library components include a numeric lib="N" attribute. Subcircuit instances omit lib.
-- Preserve attribute order similar to the skeleton. Do not pretty-print beyond normal indentation.
-
+- Preserve attribute order similar to the skeleton. Do not pretty-print beyond normal indentation.{extra}
 ## Components to use (standard ticks AND custom names — use these verbatim)
 {comps}
 
@@ -137,13 +184,17 @@ No prose, no markdown fences, no XML declaration, no <project> wrapper.
 """
 
 
-def validate_generated(xml_bytes: bytes) -> tuple[bool, dict]:
+def validate_generated(
+    xml_bytes: bytes,
+    target_format: str | CircFormat = CircFormat.EVOLUTION,
+) -> tuple[bool, dict]:
     """
     Validate generated circuit XML.
 
     Returns (ok, preview) where preview has name, input_count, output_count,
     component_count, tip (optional).
     """
+    fmt = normalize_format(target_format)
     text = xml_bytes.strip()
     # Strip markdown fences if user pasted them anyway
     if text.startswith(b"```"):
@@ -161,6 +212,7 @@ def validate_generated(xml_bytes: bytes) -> tuple[bool, dict]:
         "component_count": 0,
         "tip": None,
         "error": None,
+        "format": fmt.value,
     }
     try:
         el = parse_circuit_bytes(text)
@@ -171,6 +223,15 @@ def validate_generated(xml_bytes: bytes) -> tuple[bool, dict]:
     if etree.QName(el).localname != "circuit":
         preview["error"] = "Root element must be <circuit>"
         return False, preview
+
+    # Soft check: Evolution-only bits in a classic target
+    if fmt == CircFormat.CLASSIC:
+        lowered = text.lower()
+        if b"<appear" in lowered or b'name="clabel"' in lowered:
+            preview["tip"] = (
+                "XML looks Evolution-style; classic Logisim may ignore or reject "
+                "<appear>/<clabel> — open and check in classic Logisim."
+            )
 
     preview["name"] = el.get("name")
     comps = [c for c in el.iter() if etree.QName(c).localname == "comp"]
@@ -193,16 +254,7 @@ def validate_generated(xml_bytes: bytes) -> tuple[bool, dict]:
     preview["input_count"] = inputs
     preview["output_count"] = outputs
 
-    # Wrap and structurally validate (dangling ok for standalone)
-    wrapped = (
-        b'<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
-        b'<project source="3.8.0" version="1.0">\n'
-        b'<lib desc="#Wiring" name="0"/>\n'
-        b'<lib desc="#Gates" name="1"/>\n'
-        b'<main name="x"/>\n'
-        + text
-        + b"\n</project>\n"
-    )
+    wrapped = wrap_circuit_as_project(text, fmt)
     from circuit_vault.repair import validate_file_bytes
 
     vr = validate_file_bytes(wrapped)
@@ -212,8 +264,11 @@ def validate_generated(xml_bytes: bytes) -> tuple[bool, dict]:
         return False, preview
 
     if comps and not wires:
-        preview["tip"] = "Circuit parses, but has no wires — check wiring in Logisim."
-    elif comps and wires:
+        preview["tip"] = (
+            preview.get("tip")
+            or "Circuit parses, but has no wires — check wiring in Logisim."
+        )
+    elif comps and wires and not preview.get("tip"):
         preview["tip"] = "Confirm wiring in Logisim after merge."
 
     return True, preview

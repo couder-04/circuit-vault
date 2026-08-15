@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from circuit_vault import core
+from circuit_vault.formats import credential_store_name
 from circuit_vault.validator import HealthState
 
 app = typer.Typer(
@@ -149,10 +150,19 @@ def build_prompt_cmd(
     components: str = typer.Option("", "--components", help="Comma-separated component names"),
     inputs: str = typer.Option("", "--inputs"),
     outputs: str = typer.Option("", "--outputs"),
+    format: str = typer.Option(
+        "auto",
+        "--format",
+        help="classic | evolution | auto (detect from open .circ)",
+    ),
 ) -> None:
     """Print a Claude prompt for building a circuit."""
     comps = [c.strip() for c in components.split(",") if c.strip()]
-    prompt = core.get_app().build_prompt(description, comps, inputs, outputs)
+    target_format = None if format.strip().lower() == "auto" else format
+    if target_format is None:
+        # Ensure session is open when auto-detecting
+        core.ensure_session()
+    prompt = core.get_app().build_prompt(description, comps, inputs, outputs, target_format)
     console.print(prompt)
 
 
@@ -177,7 +187,11 @@ def setup(
     repo: str = typer.Option(..., "--repo", help="GitHub repo URL"),
     name: str = typer.Option("", "--name"),
     email: str = typer.Option("", "--email"),
-    token: str = typer.Option("", "--token", help="PAT (stored in keychain)"),
+    token: str = typer.Option(
+        "",
+        "--token",
+        help=f"PAT (stored in {credential_store_name()})",
+    ),
 ) -> None:
     """One-time GitHub link for auto-sync."""
     _ensure_open_or_exit()

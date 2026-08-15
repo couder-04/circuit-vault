@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "circuit-vault"
 version = "2.0.0"
-description = "Protect Logisim .circ files with per-circuit finals, import, and build-from-prompt"
+description = "Protect Logisim and Logisim Evolution .circ files (Windows, macOS, Linux) with per-circuit finals, import, and build-from-prompt"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -25,6 +25,9 @@ circuit-vault = "circuit_vault.cli:app"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["circuit_vault*"]
+
+[tool.setuptools.package-data]
+circuit_vault = ["skeletons/*.xml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from circuit_vault.dependencies import build_graph
+from circuit_vault.formats import detect_format, format_label
 from circuit_vault.parser import (
     ParseError,
     extract_circuit_raw_bytes,
@@ -45,6 +46,7 @@ class MergeResult:
     unresolved_deps: list[str] = field(default_factory=list)
     backup_path: Path | None = None
     message: str = ""
+    format_warning: str | None = None
 
 
 def scan_incoming(path: str | Path) -> list[IncomingCircuit]:
@@ -103,7 +105,9 @@ def scan_incoming(path: str | Path) -> list[IncomingCircuit]:
             continue
 
         # Attempt repair on this circuit alone.
-        rr = repair_circuit(xml)
+        from circuit_vault.formats import detect_format as _detect
+
+        rr = repair_circuit(xml, target_format=_detect(project))
         if rr.ok and rr.fixed_bytes is not None:
             # Re-check dangling refs against the full incoming name set.
             from circuit_vault.parser import parse_circuit_bytes
@@ -229,6 +233,7 @@ def merge(
         return MergeResult(ok=False, message=str(exc))
 
     bak = backup(target_path)
+    target_fmt = detect_format(target)
 
     # Build merge plan: selected + needed deps from incoming that aren't valid in target.
     to_merge: list[str] = []
@@ -259,6 +264,15 @@ def merge(
             tmp.unlink(missing_ok=True)
     except ParseError as exc:
         return MergeResult(ok=False, backup_path=bak, message=str(exc))
+
+    incoming_fmt = detect_format(incoming_proj)
+    format_warning: str | None = None
+    if target_fmt != incoming_fmt:
+        format_warning = (
+            f"Format mismatch: shared file is {format_label(incoming_fmt)}, "
+            f"target is {format_label(target_fmt)}. "
+            "Circuits were merged as XML; open the result in your Logisim app and verify."
+        )
 
     graph = build_graph(incoming_proj)
     target_names = set(list_circuits(target))
@@ -349,6 +363,13 @@ def merge(
     except (SpliceError, ParseError, KeyError) as exc:
         return MergeResult(ok=False, backup_path=bak, message=f"Merge failed: {exc}")
 
+    msg = (
+        f"Imported {len(merged)} circuit(s). "
+        "Your other circuits were left untouched."
+    )
+    if format_warning:
+        msg = f"{msg} {format_warning}"
+
     return MergeResult(
         ok=True,
         merged=merged,
@@ -357,10 +378,8 @@ def merge(
         pulled_deps=pulled,
         unresolved_deps=unresolved,
         backup_path=bak,
-        message=(
-            f"Imported {len(merged)} circuit(s). "
-            "Your other circuits were left untouched."
-        ),
+        message=msg,
+        format_warning=format_warning,
     )
 
 
