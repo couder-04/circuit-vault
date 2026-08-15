@@ -13,6 +13,12 @@ class GitError(Exception):
     """Raised for unexpected git failures (not 'nothing to commit')."""
 
 
+_MACOS_PERM_RE = re.compile(
+    r"warning:\s*could not open directory\s+'[^']+'\s*:\s*Operation not permitted",
+    re.IGNORECASE,
+)
+
+
 def _run(
     args: list[str],
     cwd: Path,
@@ -32,9 +38,80 @@ def _run(
     )
 
 
+def _resolve(dir_path: str | Path) -> Path:
+    return Path(dir_path).expanduser().resolve()
+
+
+def is_home_dir(dir_path: str | Path) -> bool:
+    """True if *dir_path* is the user's home directory (unsafe as a git root)."""
+    try:
+        return _resolve(dir_path) == Path.home().resolve()
+    except OSError:
+        return False
+
+
+def _home_repo_error() -> GitError:
+    return GitError(
+        "Your .circ is in your home folder. Circuit Vault needs a dedicated project "
+        "folder — using home makes Git try to track the whole user directory "
+        "(and on macOS that often hits Photos/Trash permission errors).\n\n"
+        "How to fix:\n"
+        "1. Create a project folder (example: Documents/my-lab or Desktop/my-lab).\n"
+        "2. Move your .circ into that folder.\n"
+        "3. Open that .circ in Circuit Vault again, then re-link GitHub if asked.\n\n"
+        "How to restart:\n"
+        "Quit Circuit Vault, then run: circuit-vault gui"
+    )
+
+
+def _assert_safe_repo_root(dir_path: str | Path) -> Path:
+    d = _resolve(dir_path)
+    if is_home_dir(d):
+        raise _home_repo_error()
+    return d
+
+
+def _strip_macos_perm_warnings(text: str) -> str:
+    """Remove macOS TCC noise so we can see the real git error (if any)."""
+    cleaned = _MACOS_PERM_RE.sub("", text or "")
+    return "\n".join(ln for ln in cleaned.splitlines() if ln.strip()).strip()
+
+
+def _commit_error_message(raw: str, dir_path: Path) -> str:
+    cleaned = _strip_macos_perm_warnings(raw)
+    low = (cleaned or raw or "").lower()
+    if (
+        "operation not permitted" in low
+        or "could not open directory" in low
+        or (not cleaned and "operation not permitted" in (raw or "").lower())
+    ):
+        if is_home_dir(dir_path):
+            return str(_home_repo_error())
+        return (
+            "Git hit a folder permission error while reading near your project "
+            "(common on macOS when the project is too close to home).\n\n"
+            "How to fix:\n"
+            "1. Put your .circ in its own project folder (not your home folder).\n"
+            "2. If you already have a .git folder in home by mistake, ignore it — "
+            "use the project folder instead.\n"
+            "3. Open the .circ from that project folder and try linking GitHub again.\n\n"
+            "How to restart:\n"
+            "Quit Circuit Vault, then run: circuit-vault gui"
+        )
+    if "author identity unknown" in low or "please tell me who you are" in low:
+        return (
+            "Git needs a name and email before it can commit.\n\n"
+            "How to fix:\n"
+            "Enter a commit name and email in the Setup / Settings screen, then try again.\n\n"
+            "How to restart:\n"
+            "Quit Circuit Vault, then run: circuit-vault gui"
+        )
+    return cleaned or raw or "git commit failed"
+
+
 def is_repo(dir_path: str | Path) -> bool:
     """True only if *this* directory is a git work tree root (not a parent repo)."""
-    d = Path(dir_path).resolve()
+    d = _resolve(dir_path)
     result = _run(["git", "rev-parse", "--show-toplevel"], d)
     if result.returncode != 0:
         return False
@@ -44,7 +121,7 @@ def is_repo(dir_path: str | Path) -> bool:
 
 def ensure_repo(dir_path: str | Path, *, push_backups: bool = True) -> None:
     """git init if needed; configure .gitignore for backup policy."""
-    d = Path(dir_path)
+    d = _assert_safe_repo_root(dir_path)
     d.mkdir(parents=True, exist_ok=True)
     if not is_repo(d):
         result = _run(
@@ -85,7 +162,7 @@ def configure_gitignore(dir_path: str | Path, *, push_backups: bool = True) -> N
 
 
 def set_identity(dir_path: str | Path, name: str, email: str) -> None:
-    d = Path(dir_path)
+    d = _assert_safe_repo_root(dir_path)
     ensure_repo(d)
     if name:
         _run(["git", "config", "user.name", name], d)
@@ -95,7 +172,7 @@ def set_identity(dir_path: str | Path, name: str, email: str) -> None:
 
 def set_remote(dir_path: str | Path, url: str, *, token: str | None = None) -> None:
     """Set origin remote. If token given, embed for HTTPS push."""
-    d = Path(dir_path)
+    d = _assert_safe_repo_root(dir_path)
     ensure_repo(d)
     push_url = _url_with_token(url, token) if token else url
     if has_remote(d):
@@ -146,9 +223,12 @@ def commit(dir_path: str | Path, message: str) -> bool:
     Returns True if a commit was created, False if nothing to commit.
     Never raises on empty commit.
     """
-    d = Path(dir_path)
+    d = _assert_safe_repo_root(dir_path)
     ensure_repo(d)
-    _run(["git", "add", "-A"], d)
+    add = _run(["git", "add", "-A"], d)
+    add_err = _strip_macos_perm_warnings((add.stderr or "").strip())
+    if add.returncode != 0 and add_err:
+        raise GitError(_commit_error_message(add.stderr or add_err, d))
     status = _run(["git", "status", "--porcelain"], d)
     if not (status.stdout or "").strip():
         return False
@@ -157,7 +237,7 @@ def commit(dir_path: str | Path, message: str) -> bool:
         err = (result.stderr or result.stdout or "").strip()
         if "nothing to commit" in err.lower():
             return False
-        raise GitError(err or "git commit failed")
+        raise GitError(_commit_error_message(err, d))
     return True
 
 

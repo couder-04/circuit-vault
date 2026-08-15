@@ -34,7 +34,13 @@ from PySide6.QtWidgets import (
 )
 
 from circuit_vault.core import CircuitVaultApp, first_run_needed, last_circ_path, load_session
-from circuit_vault.formats import CircFormat, credential_store_name, detect_format, format_label
+from circuit_vault.formats import (
+    CircFormat,
+    credential_store_name,
+    detect_format,
+    format_label,
+    quit_shortcut_hint,
+)
 from circuit_vault.promptgen import components_catalog
 from circuit_vault.validator import HealthState
 
@@ -44,6 +50,22 @@ _DOT = {
     HealthState.BROKEN: QColor("#c62828"),
     HealthState.NO_FINAL: QColor("#9e9e9e"),
 }
+
+
+def _with_restart_help(message: str) -> str:
+    text = (message or "Something went wrong.").strip()
+    if "How to restart:" in text:
+        return text
+    return (
+        f"{text}\n\n"
+        "How to restart:\n"
+        f"Quit Circuit Vault ({quit_shortcut_hint()}), then run:\n"
+        "  circuit-vault gui"
+    )
+
+
+def _show_error(parent: QWidget | None, title: str, message: str) -> None:
+    QMessageBox.warning(parent, title, _with_restart_help(message))
 
 
 class HealthDot(QWidget):
@@ -120,19 +142,23 @@ class SetupWizard(QDialog):
         if self.app_core.circ_path is None and last_circ_path():
             self.app_core.open_project(last_circ_path())  # type: ignore[arg-type]
         if self.app_core.circ_path is None:
-            QMessageBox.warning(self, "Need a file", "Choose a .circ file first.")
+            _show_error(self, "Need a file", "Choose a .circ file first.")
             return
         if not self.repo.text().strip():
-            QMessageBox.warning(self, "Need a repo", "Paste your GitHub repo URL.")
+            _show_error(self, "Need a repo", "Paste your GitHub repo URL.")
             return
-        result = self.app_core.setup_repo(
-            self.repo.text().strip(),
-            self.name.text().strip(),
-            self.email.text().strip(),
-            self.token.text().strip(),
-        )
+        try:
+            result = self.app_core.setup_repo(
+                self.repo.text().strip(),
+                self.name.text().strip(),
+                self.email.text().strip(),
+                self.token.text().strip(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _show_error(self, "Setup failed", str(exc))
+            return
         if not result.ok:
-            QMessageBox.warning(self, "Setup failed", result.message)
+            _show_error(self, "Setup failed", result.message)
             return
         QMessageBox.information(self, "Ready", result.message)
         self.accept()
@@ -731,14 +757,19 @@ class MainWindow(QMainWindow):
 
     def _save_repo_settings(self) -> None:
         token = self.set_token.text().strip()
-        r = self.app_core.setup_repo(
-            self.set_repo.text().strip(),
-            self.set_name.text().strip(),
-            self.set_email.text().strip(),
-            token,
-        )
+        try:
+            r = self.app_core.setup_repo(
+                self.set_repo.text().strip(),
+                self.set_name.text().strip(),
+                self.set_email.text().strip(),
+                token,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _show_error(self, "Failed", str(exc))
+            self._refresh_sync_bar()
+            return
         if not r.ok:
-            QMessageBox.warning(self, "Failed", r.message)
+            _show_error(self, "Failed", r.message)
         else:
             QMessageBox.information(self, "Saved", r.message)
             self.set_token.clear()
@@ -779,10 +810,24 @@ class MainWindow(QMainWindow):
 
 def run_gui() -> None:
     import sys
+    import traceback
 
     from circuit_vault import core as core_mod
 
     qt = QApplication.instance() or QApplication(sys.argv)
+
+    def _excepthook(exc_type, exc, tb) -> None:  # noqa: ANN001
+        details = "".join(traceback.format_exception(exc_type, exc, tb))
+        summary = str(exc).strip() or exc_type.__name__
+        dialog = QMessageBox()
+        dialog.setIcon(QMessageBox.Icon.Critical)
+        dialog.setWindowTitle("Circuit Vault error")
+        dialog.setText(_with_restart_help(summary))
+        dialog.setDetailedText(details)
+        dialog.exec()
+
+    sys.excepthook = _excepthook
+
     core = core_mod.get_app()
 
     if first_run_needed():

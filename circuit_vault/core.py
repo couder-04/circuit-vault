@@ -191,7 +191,11 @@ class CircuitVaultApp:
         try:
             gitops.ensure_repo(path.parent, push_backups=bool(settings["push_backups"]))
         except gitops.GitError as exc:
-            return OpenResult(ok=False, path=path, message=f"Git setup failed: {exc}")
+            return OpenResult(
+                ok=False,
+                path=path,
+                message=f"Git setup failed: {exc}",
+            )
 
         self.circ_path = path
         self.project = project
@@ -368,11 +372,24 @@ class CircuitVaultApp:
 
         if test_push:
             # Ensure at least one commit exists
-            gitops.commit(dig, "Link Circuit Vault to GitHub")
-            ok, msg = gitops.push(dig)
+            try:
+                gitops.commit(dig, "Link Circuit Vault to GitHub")
+                ok, msg = gitops.push(dig)
+            except gitops.GitError as exc:
+                self._sync_status = "failed"
+                return SetupResult(ok=False, message=str(exc))
             if not ok:
                 self._sync_status = "failed"
-                return SetupResult(ok=False, message=f"Linked, but test push failed: {msg}")
+                return SetupResult(
+                    ok=False,
+                    message=(
+                        f"Linked, but test push failed: {msg}\n\n"
+                        "How to fix:\n"
+                        "Check the repo URL and access token in Settings, then try Save & test push.\n\n"
+                        "How to restart:\n"
+                        "Quit Circuit Vault, then run: circuit-vault gui"
+                    ),
+                )
 
         self._sync_status = "synced"
         return SetupResult(ok=True, message="GitHub linked — future changes sync automatically")
