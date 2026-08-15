@@ -81,19 +81,35 @@ This is the **lab** backup repo (your `.circ` + finals). Separate from the Circu
 
 ## 3. Personal access token (PAT)
 
-Circuit Vault’s GUI needs a PAT for auto-sync (stored in Keychain / Credential Manager).
+Circuit Vault’s GUI needs a PAT for auto-sync (stored in Keychain / Credential Manager).  
+**Without Write access on your lab repo, push fails** (`Write access to repository not granted`).
 
-**If you use `gh auth login`**, you can often create a token from the CLI later, but the simplest first-time path is still the website:
+### Recommended — fine-grained token (pick the repo + Read and Write)
 
-GitHub → profile → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**  
+1. Open [https://github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)  
+   (GitHub → profile → **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**)
+2. **Token name**: e.g. `circuit-vault`
+3. **Expiration**: pick a date you are comfortable with
+4. **Resource owner**: your GitHub user
+5. **Repository access** — choose **Only select repositories** → **select your lab repo**  
+   (e.g. `tracked_logism_lab` — the one from §2, **not** `couder-04/circuit-vault`)
+6. **Permissions** → **Repository permissions** → **Contents** → set to **Read and write**  
+   (both Read **and** Write — this is required for Circuit Vault to push finals / backups)
+7. Leave other permissions as default unless you know you need more
+8. **Generate token** → copy `github_pat_…` **immediately** (shown once)
+
+> **Important:** If you skip selecting the lab repo, or leave Contents as **Read-only**, sync will fail. Always: **select that repo** + **Contents = Read and write**.
+
+### Alternative — classic token
+
+GitHub → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**  
 → [https://github.com/settings/tokens](https://github.com/settings/tokens)
 
 1. **Generate new token (classic)** · note e.g. `circuit-vault` · pick an expiration
-2. Scope: check **`repo`**
+2. Scope: check **`repo`** (includes read + write for all your repos)
 3. Generate → copy `ghp_…` **immediately** (shown once)
 
-Fine-grained also works with **Contents: Read and write** on that one lab repo.  
-Token is stored in the OS credential store — never commit it.
+Token is stored in the OS credential store — never commit it. Paste it into the Circuit Vault setup wizard / Settings.
 
 ## 4. Local project folder (required)
 
@@ -413,10 +429,12 @@ In the wizard / **Settings**:
 | Field | Must be |
 |-------|---------|
 | GitHub repo URL | `https://github.com/YOUR_USERNAME/tracked_logism_lab.git` |
-| Access token | New classic PAT with **`repo`** checked ([tokens](https://github.com/settings/tokens)) |
+| Access token | Fine-grained: **Only select repositories** → your lab repo → **Contents = Read and write**; or classic PAT with **`repo`** checked |
 | Choose .circ… | A file inside `Desktop/tracked_logism_lab/lab/` |
 
 Then **Save & test push**.
+
+If the token was fine-grained but **Contents** was only **Read-only**, or you never selected the lab repo under **Repository access**, create a new token with both fixed (see §3) and paste it in Settings.
 
 **Optional — share one lab with a friend** (both can sync to the same repo):
 
