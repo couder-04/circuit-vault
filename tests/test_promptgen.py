@@ -36,7 +36,8 @@ def test_prompt_contains_skeleton_and_components():
     assert "AND Gate" in prompt
     assert "XOR Gate" in prompt
     assert "my_custom_block" in prompt
-    assert "ONLY" in prompt or "only" in prompt.lower()
+    assert "code block" in prompt.lower()
+    assert "nothing else" in prompt.lower()
     assert 'name="Pin"' in prompt or "Half Adder" in prompt
     assert "axis-aligned" in prompt.lower() or "NEVER draw a diagonal" in prompt
     assert "MUST start with a letter" in prompt

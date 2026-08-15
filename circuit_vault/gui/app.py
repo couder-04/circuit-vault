@@ -813,8 +813,8 @@ class MainWindow(QMainWindow):
 
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("Missing circuits in this .circ")
-        box.setText("Required subcircuits are missing — not a crash.")
+        box.setWindowTitle("Needs a fix from Claude")
+        box.setText("The XML is incomplete — not a crash.")
         box.setInformativeText(message)
         copy_btn = box.addButton("Copy fix prompt", QMessageBox.ButtonRole.AcceptRole)
         open_btn = box.addButton("Open Claude", QMessageBox.ButtonRole.ActionRole)
@@ -847,7 +847,9 @@ class MainWindow(QMainWindow):
         )
         if not result.ok:
             preview = result.preview or {}
-            if preview.get("fix_prompt") or preview.get("missing_subcircuits"):
+            if preview.get("fix_prompt") or preview.get("missing_subcircuits") or preview.get(
+                "underwired"
+            ):
                 self._offer_missing_fix_prompt(result.message, preview)
             else:
                 box = QMessageBox(self)

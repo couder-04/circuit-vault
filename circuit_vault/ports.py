@@ -197,6 +197,61 @@ def _nearest(
     return best if best is not None and best_d <= max_dist else None
 
 
+def connectivity_stats(circuit_el: etree._Element) -> dict:
+    """
+    Rough wiring completeness for Build validation.
+
+    Returns component_count, wire_count, port_count, connected_ports,
+    floating_ports, underwired (bool), summary (str).
+    """
+    comps = list(circuit_el.iter("comp"))
+    wires = list(circuit_el.iter("wire"))
+    ports = collect_ports(circuit_el)
+    ends: set[tuple[int, int]] = set()
+    for w in wires:
+        for attr in ("from", "to"):
+            pt = _parse_coord(w.get(attr))
+            if pt is not None:
+                ends.add(pt)
+    connected = ports & ends
+    floating = ports - ends
+    n_comp = len(comps)
+    n_wire = len(wires)
+    n_port = len(ports)
+    n_conn = len(connected)
+
+    underwired = False
+    reasons: list[str] = []
+    if n_comp >= 2 and n_wire == 0:
+        underwired = True
+        reasons.append("no <wire> elements at all")
+    elif n_comp >= 4 and n_wire < max(3, n_comp - 1):
+        underwired = True
+        reasons.append(
+            f"only {n_wire} wire(s) for {n_comp} components (need many more connections)"
+        )
+    elif n_port >= 6 and n_conn < max(3, (n_port + 1) // 2):
+        underwired = True
+        reasons.append(
+            f"only {n_conn}/{n_port} known ports have a wire attached"
+        )
+
+    summary = (
+        f"{n_comp} comps, {n_wire} wires, {n_conn}/{n_port} ports wired"
+        + ((" — " + "; ".join(reasons)) if reasons else "")
+    )
+    return {
+        "component_count": n_comp,
+        "wire_count": n_wire,
+        "port_count": n_port,
+        "connected_ports": n_conn,
+        "floating_ports": len(floating),
+        "underwired": underwired,
+        "summary": summary,
+        "reasons": reasons,
+    }
+
+
 def snap_wires_to_ports(
     circuit_el: etree._Element,
     *,

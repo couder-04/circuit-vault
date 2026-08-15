@@ -346,6 +346,51 @@ def prepare_generated_circuit(
     return out, final_name, notes
 
 
+def generate_wiring_fix_prompt(
+    *,
+    circuit_name: str,
+    broken_xml: str,
+    stats_summary: str,
+    description: str = "",
+) -> str:
+    """Prompt for Claude when XML has components but almost no wiring."""
+    desc_line = description.strip() or "(same behavior as the broken XML)"
+    xml_snip = broken_xml.strip()
+    if len(xml_snip) > 12000:
+        xml_snip = xml_snip[:12000] + "\n<!-- …truncated… -->"
+    return f"""The Logisim circuit XML below places components but does NOT wire them
+completely. In the simulator it looks like isolated blocks with almost no connections.
+
+## Circuit name
+{circuit_name}
+
+## Intent
+{desc_line}
+
+## Connectivity check
+{stats_summary}
+
+## Your job
+Rewrite ONE complete <circuit>…</circuit> that keeps the same idea but ADDS all
+missing wires so signals flow from inputs → logic → outputs.
+
+## Rules (strict)
+1. Keep useful <comp> elements; add every required <wire from="(x,y)" to="(x,y)"/>.
+2. Expect many wires (often more than the number of components).
+3. Axis-aligned wires only (horizontal or vertical); use two segments for corners.
+4. Connect every input Pin, every output Pin, splitters bit-by-bit, and chain carries
+   between adder stages. Do not leave Full Adder / gate blocks with empty pins.
+5. Gate loc is the output tip — see usual port offsets (AND/OR inputs at (X-50,Y±20);
+   XOR at (X-60,Y±20); NOT input at (X-30,Y)).
+6. Give the answer as a **single code block** only — nothing else outside the fence.
+
+## Broken under-wired XML
+```
+{xml_snip}
+```
+"""
+
+
 def generate_missing_subcircuit_fix_prompt(
     *,
     circuit_name: str,
@@ -399,7 +444,9 @@ Intent: {desc_line}
 4. Keep axis-aligned wires on a 10-unit grid; gate loc is the output tip; connect inputs
    to real port offsets (AND/OR at loc (X,Y): inputs (X-50,Y-20) and (X-50,Y+20);
    XOR: (X-60,Y-20)/(X-60,Y+20); NOT input at (X-30,Y)).
-5. Return ONLY the <circuit>…</circuit> XML — no markdown fences, no commentary.
+5. Give the answer as a **single code block**. Only the code block is required — nothing else.
+   Put the full `<circuit>…</circuit>` inside one fence (```xml … ```). No intro/outro text,
+   and do not paste the XML as normal chat text outside the code block.
 
 ## Broken XML to fix
 ```
@@ -457,10 +504,18 @@ def generate_prompt(
 - Typical canvas: inputs around x=80, gates around x=200–220, outputs around x=300–320.
 
 ## Wiring rules (alignment + connection — critical)
-- Every connection is a `<wire from="(x,y)" to="(x,y)"/>`.
+- Placing components without wiring them is **WRONG**. Every Pin, gate, splitter, and
+  subcircuit port that is part of the design MUST have wires attached.
+- Every connection is a `<wire from="(x,y)" to="(x,y)"/>` — expect **many** wire tags
+  (often more wires than components).
 - Wires MUST be **axis-aligned** (horizontal OR vertical). NEVER draw a diagonal wire.
 - If a connection needs both an x and y change, use **two** wires via a corner.
-- Red wires in Logisim mean an endpoint is floating — avoid that completely.
+- Red / floating ends in Logisim mean failure — avoid that completely.
+- Multi-bit designs: wire **splitters** bit-by-bit into each stage; chain carry wires
+  between stages; wire each sum bit back to the Sum splitter. Do not leave FA/HA blocks
+  sitting with no wires.
+- A circuit that only has `<comp>` tags and almost no `<wire>` tags is invalid — rewrite
+  until the signal path is complete from inputs to outputs.
 {port_guide_for_prompt()}
 - Built-in library components include numeric `lib="N"`. Subcircuit instances omit `lib`.
 - **Subcircuits (important):** Do NOT emit `<comp name="Half Adder"/>` or `<comp name="Full Adder"/>` (no lib) unless those exact names are listed under Components below as custom blocks that already exist in the user’s file. Prefer expanding half/full adders into XOR/AND/OR gates with lib="1". Placing a missing subcircuit makes Build merge fail.
@@ -480,8 +535,12 @@ Inputs: {inputs or "(unspecified)"}
 Outputs: {outputs or "(unspecified)"}
 
 ## Output rules (strict)
-Return ONLY a single <circuit name="...">...</circuit> element.
-No prose, no markdown fences, no XML declaration, no <project> wrapper.
+Give the answer as a **single code block**. Only the code block is required — nothing else.
+- Put the entire `<circuit name="...">...</circuit>` inside one fenced block (e.g. ```xml … ```).
+- Do **not** write any intro, explanation, title, or closing text outside that code block.
+- Do **not** paste the XML as plain/normal chat text mixed with other sentences.
+- No XML declaration, no `<project>` wrapper — only the one `<circuit>` element inside the code block.
+- The code block MUST include all required `<wire>` connections — components alone are not enough.
 """
 
 
@@ -607,6 +666,26 @@ def validate_generated(
             )
             return False, preview
 
+    from circuit_vault.ports import connectivity_stats
+
+    stats = connectivity_stats(el)
+    preview["wire_count"] = stats["wire_count"]
+    preview["connectivity"] = stats["summary"]
+    if stats["underwired"]:
+        preview["error"] = (
+            "This XML places components but does not wire them enough "
+            f"({stats['summary']}).\n\n"
+            'Click "Copy fix prompt" (also filled into Step 2) so Claude adds all '
+            "missing wires, then paste the new XML and Build & Merge again."
+        )
+        preview["fix_prompt"] = generate_wiring_fix_prompt(
+            circuit_name=preview.get("name") or "circuit",
+            broken_xml=text.decode("utf-8", errors="replace"),
+            stats_summary=stats["summary"],
+        )
+        preview["underwired"] = True
+        return False, preview
+
     wrapped = wrap_circuit_as_project(text, fmt)
     from circuit_vault.repair import validate_file_bytes
 
@@ -619,10 +698,7 @@ def validate_generated(
     tip_bits = []
     if preview.get("fixes"):
         tip_bits.append("Auto-fixed: " + "; ".join(preview["fixes"]))
-    if comps and not wires:
-        tip_bits.append("Circuit parses, but has no wires — check wiring in Logisim.")
-    elif comps and wires:
-        tip_bits.append("Confirm pin alignment in Logisim after merge.")
+    tip_bits.append(f"Connectivity: {stats['summary']}. Confirm in Logisim after merge.")
     if tip_bits and not preview.get("tip"):
         preview["tip"] = " ".join(tip_bits)
     elif tip_bits and preview.get("tip"):
