@@ -2,7 +2,33 @@
 
 Protect **Logisim** and **Logisim Evolution** `.circ` files on **Windows**, **macOS**, and **Linux**: save per-circuit **finals**, restore one circuit without touching the rest, import shared work, and build from a Claude prompt. GitHub backs up your project folder automatically.
 
-Most people only need the **GUI**. Follow the map below, then the matching sections.
+### Quick flow — clone → install → use
+
+```mermaid
+flowchart LR
+  A[git clone<br/>tool repo] --> B[pip install -e .]
+  B --> C[circuit-vault gui]
+  C --> D[Link GitHub<br/>+ open .circ]
+  D --> E[Mark Final / Restore]
+  E --> F[auto sync<br/>to GitHub]
+
+  style A fill:#e3f2fd
+  style B fill:#e3f2fd
+  style C fill:#fff8e1
+  style D fill:#fff8e1
+  style E fill:#e8f5e9
+  style F fill:#e8f5e9
+```
+
+| Step | Command / action |
+|------|------------------|
+| 1 | `git clone …/circuit-vault.git` → `cd circuit-vault` |
+| 2 | `python3 -m pip install -e ".[dev]"` |
+| 3 | `circuit-vault gui` |
+| 4 | Paste lab repo URL + PAT → choose `.circ` |
+| 5 | **My File** → Mark Final / Restore (syncs automatically) |
+
+Most people only need the **GUI**. Longer detail is below; full walkthrough → **[USER_MANUAL.md](USER_MANUAL.md)**.
 
 ### Big picture (first-time path)
 
@@ -10,7 +36,7 @@ Most people only need the **GUI**. Follow the map below, then the matching secti
 flowchart TD
   A[1. GitHub account] --> B[2. Create empty repo<br/>copy HTTPS URL]
   B --> C[3. Create PAT token<br/>copy ghp_…]
-  C --> D[4. Install Circuit Vault<br/>pip install]
+  C --> D[4. git clone tool + pip install]
   D --> E[5. Start GUI<br/>circuit-vault gui]
   E --> F[6. Setup wizard<br/>paste URL + token<br/>choose .circ]
   F --> G[7. Everyday use]
@@ -33,7 +59,7 @@ flowchart TD
 | When | Do this |
 |------|---------|
 | **Once** (green) | Account → empty repo → PAT |
-| **Once per computer** (blue) | Install → open GUI → finish wizard |
+| **Once per computer** (blue) | Clone → install → open GUI → finish wizard |
 | **Daily** (yellow) | Mark Final / Restore / Import / Build |
 
 ---
@@ -94,42 +120,85 @@ GitHub no longer lets apps use your normal password. A PAT is a special one-time
 
 ---
 
-## Install Circuit Vault (once per computer)
+## Clone & install (once per computer)
 
 You need **Python 3.11+** and **Git** on your PATH.
 
-### macOS
+```bash
+python3 --version    # need 3.11+  (Windows: py -3.11 --version)
+git --version
+```
+
+| OS | If Python / Git are missing |
+|----|-----------------------------|
+| macOS | `brew install python@3.11 git` |
+| Windows | [python.org](https://www.python.org/downloads/) + [Git for Windows](https://git-scm.com/download/win) |
+| Linux | `sudo apt install python3 python3-pip python3-venv git` |
+
+### 1. Clone the tool repo
+
+**macOS / Linux:**
 
 ```bash
-brew install python@3.11 git   # if needed
+cd ~/code_playground   # or any folder you like
+git clone https://github.com/YOU/circuit-vault.git
+cd circuit-vault
+```
+
+**Windows (PowerShell):**
+
+```powershell
+cd $HOME\code_playground
+git clone https://github.com/YOU/circuit-vault.git
+cd circuit-vault
+```
+
+Or copy the whole `circuit-vault` project folder to this machine (USB / cloud), then open a terminal in that folder.
+
+### 2. Install
+
+**macOS / Linux:**
+
+```bash
 cd /path/to/circuit-vault
 python3 -m pip install -e ".[dev]"
 circuit-vault --help
+circuit-vault gui
 ```
 
-### Windows
-
-1. Install [Python 3.11+](https://www.python.org/downloads/) (check **Add python.exe to PATH**)
-2. Install [Git for Windows](https://git-scm.com/download/win)
-3. In **PowerShell** or **Command Prompt**:
+**Windows:**
 
 ```powershell
 cd C:\path\to\circuit-vault
 py -3.11 -m pip install -e ".[dev]"
 circuit-vault --help
+circuit-vault gui
 ```
 
-### Linux
+If `circuit-vault: command not found`, ensure your pip scripts path is on `PATH`, or run:
 
 ```bash
-# Debian/Ubuntu example
-sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
-cd /path/to/circuit-vault
-python3 -m pip install -e ".[dev]"
-circuit-vault --help
+python3 -m circuit_vault.cli --help
 ```
 
-If that prints help text, you are ready.
+### 3. Get your lab `.circ` (optional clone)
+
+If you already synced from another machine, clone the **lab** repo (the one you link in Setup — not necessarily the tool repo):
+
+```bash
+cd ~/Documents
+git clone https://github.com/YOU/YOUR-LAB-REPO.git
+cd YOUR-LAB-REPO
+ls *.circ            # Windows: dir *.circ
+ls circuit-vault/   # finals from the other machine, if any
+```
+
+First time only — put your `.circ` in a dedicated folder:
+
+```bash
+mkdir -p ~/Documents/logisim-lab
+# copy or move your file there, e.g. main.circ
+```
 
 ---
 
@@ -234,14 +303,114 @@ Then open the file in Logisim / Logisim Evolution and **check wiring**.
 
 ---
 
+## Quick block (new computer)
+
+```bash
+# 1) Clone + install the tool
+cd ~/code_playground   # or any folder
+git clone https://github.com/YOU/circuit-vault.git
+cd circuit-vault
+python3 -m pip install -e ".[dev]"
+
+# 2) Get lab files (first time: skip clone and just put your .circ in a folder)
+cd ~/Documents
+git clone https://github.com/YOU/YOUR-LAB-REPO.git
+cd YOUR-LAB-REPO
+
+# 3) GUI: link GitHub + choose .circ (once on this computer)
+circuit-vault gui
+
+# Or CLI equivalent:
+circuit-vault open /FULL/PATH/TO/file.circ
+circuit-vault setup --repo https://github.com/YOU/YOUR-LAB-REPO.git --token YOUR_PAT
+circuit-vault status
+circuit-vault mark "CIRCUIT_NAME"
+```
+
+---
+
+## CLI cheat sheet
+
+```bash
+# Open + remember this project
+circuit-vault open /FULL/PATH/TO/file.circ
+
+# Link GitHub (once per computer)
+circuit-vault setup \
+  --repo https://github.com/YOU/YOUR-LAB-REPO.git \
+  --name "Your Name" \
+  --email "you@school.edu" \
+  --token YOUR_PAT
+
+circuit-vault status
+circuit-vault mark "Half Adder"
+circuit-vault restore "Full Adder 32-bit"
+circuit-vault undo
+
+circuit-vault import /path/shared.circ --into /FULL/PATH/TO/file.circ \
+  --select "HealthyOR,Parent" --on-clash replace
+
+# --format auto | classic | evolution
+circuit-vault build-prompt "4-bit adder" \
+  --components "AND Gate,OR Gate,my_gate" \
+  --inputs "A,B" --outputs "Sum" \
+  --format auto
+
+circuit-vault build-merge /path/generated.xml --into /FULL/PATH/TO/file.circ
+
+circuit-vault sync    # rare — only if auto-sync was off or push failed
+circuit-vault gui
+```
+
+Clash options: `replace` | `keep_both` | `skip`
+
+---
+
+## Two (or more) computers
+
+1. On machine A: work as usual (auto-sync pushes).
+2. On machine B:
+
+```bash
+cd /path/to/YOUR-LAB-REPO
+git pull
+circuit-vault gui
+```
+
+3. Open the same `.circ`, Mark / Restore as usual.
+4. Before switching again: wait for **☁ Synced**, then on the other machine `git pull`.
+
+**Do not** edit the same circuit on both machines offline without pulling — you will get git conflicts.
+
+---
+
 ## Typical first session (checklist)
 
 1. Create GitHub repo + PAT (sections A–C above)
-2. `pip install` Circuit Vault
+2. `git clone` Circuit Vault → `pip install -e ".[dev]"`
 3. `circuit-vault gui` → paste **repo URL** + **token** → choose your `.circ` → OK
 4. **My File** → **Mark Final** on each working circuit
 5. Keep editing in Logisim; if a circuit breaks → **Restore**
 6. Confirm status bar says **☁ Synced** when online
+
+---
+
+## Where files live
+
+```text
+your-lab-folder/
+  main.circ                 ← live Logisim file
+  main.circ.bak-…           ← backups from restore / merges
+  circuit-vault/            ← canonical finals (*.xml)
+  .git/                     ← GitHub backup of this folder
+```
+
+| OS | Config path |
+|----|-------------|
+| Windows | `%APPDATA%\circuit-vault\config.json` |
+| macOS / Linux | `~/.config/circuit-vault/config.json` |
+
+Token: OS credential store (not a plaintext file).
 
 ---
 
@@ -250,5 +419,4 @@ Then open the file in Logisim / Logisim Evolution and **check wiring**.
 - Live file = your `.circ`. Finals = `circuit-vault/` next to it. Backups = `*.bak`.
 - Never put your PAT in the repo or in chat screenshots.
 - If the token expires later: GitHub → new token → **Settings** in the app → paste → **Save & test push**.
-- Config lives under `%APPDATA%\circuit-vault\` (Windows) or `~/.config/circuit-vault/` (macOS/Linux).
-- CLI, multi-machine pull/push, troubleshooting → **[USER_MANUAL.md](USER_MANUAL.md)**.
+- More detail, practice sandbox, troubleshooting → **[USER_MANUAL.md](USER_MANUAL.md)**.
