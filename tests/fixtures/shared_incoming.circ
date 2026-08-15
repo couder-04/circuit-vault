@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project source="3.8.0" version="1.0">
+  <lib desc="#Wiring" name="0"/>
+  <lib desc="#Gates" name="1"/>
+  <main name="Parent"/>
+  <options/>
+  <mappings/>
+  <toolbar/>
+  <circuit name="HealthyOR">
+    <a name="circuit" val="HealthyOR"/>
+    <comp lib="0" loc="(80,100)" name="Pin">
+      <a name="facing" val="east"/>
+      <a name="label" val="A"/>
+    </comp>
+    <comp lib="0" loc="(80,140)" name="Pin">
+      <a name="facing" val="east"/>
+      <a name="label" val="B"/>
+    </comp>
+    <comp lib="1" loc="(150,120)" name="OR Gate"/>
+    <comp lib="0" loc="(220,120)" name="Pin">
+      <a name="facing" val="west"/>
+      <a name="output" val="true"/>
+      <a name="label" val="Y"/>
+    </comp>
+    <wire from="(80,100)" to="(130,100)"/>
+    <wire from="(80,140)" to="(130,140)"/>
+    <wire from="(150,120)" to="(220,120)"/>
+  </circuit>
+  <circuit name="ChildGate">
+    <a name="circuit" val="ChildGate"/>
+    <comp lib="0" loc="(80,100)" name="Pin">
+      <a name="facing" val="east"/>
+      <a name="label" val="In"/>
+    </comp>
+    <comp lib="1" loc="(150,100)" name="NOT Gate"/>
+    <comp lib="0" loc="(220,100)" name="Pin">
+      <a name="facing" val="west"/>
+      <a name="output" val="true"/>
+      <a name="label" val="Out"/>
+    </comp>
+    <wire from="(80,100)" to="(130,100)"/>
+    <wire from="(150,100)" to="(220,100)"/>
+  </circuit>
+  <circuit name="Parent">
+    <a name="circuit" val="Parent"/>
+    <comp lib="0" loc="(60,80)" name="Pin">
+      <a name="facing" val="east"/>
+      <a name="label" val="X"/>
+    </comp>
+    <comp loc="(140,100)" name="ChildGate"/>
+    <comp lib="0" loc="(240,100)" name="Pin">
+      <a name="facing" val="west"/>
+      <a name="output" val="true"/>
+      <a name="label" val="Z"/>
+    </comp>
+    <wire from="(60,80)" to="(140,80)"/>
+    <wire from="(140,100)" to="(240,100)"/>
+  </circuit>
+  <circuit name="BrokenGhost">
+    <a name="circuit" val="BrokenGhost"/>
+    <comp lib="0" loc="(60,80)" name="Pin">
+      <a name="facing" val="east"/>
+    </comp>
+    <comp loc="(140,100)" name="TotallyMissingSubcircuit"/>
+    <comp lib="0" loc="(240,100)" name="Pin">
+      <a name="facing" val="west"/>
+      <a name="output" val="true"/>
+    </comp>
+    <wire from="(60,80)" to="(140,80)"/>
+    <wire from="(140,100)" to="(240,100)"/>
+  </circuit>
+  <circuit name="TruncatedMidSave">
+    <a name="circuit" val="TruncatedMidSave"/>
+    <comp lib="0" loc="(80,100)" name="Pin">
+      <a name="facing" val="east"/>

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "circuit-vault"
+version = "2.0.0"
+description = "Protect Logisim .circ files with per-circuit finals, import, and build-from-prompt"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+    "lxml>=5.0",
+    "PySide6>=6.6",
+    "rich>=13.0",
+    "keyring>=25.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+circuit-vault = "circuit_vault.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["circuit_vault*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project source="2.7.1" version="1.0">
+  <lib desc="#Wiring" name="0"/>
+  <lib desc="#Gates" name="1"/>
+  <main name="Demo"/>
+  <options/>
+  <mappings/>
+  <toolbar/>
+  <circuit name="AND2">
+    <a name="circuit" val="AND2"/>
+    <comp lib="0" loc="(80,100)" name="Pin">
+      <a name="facing" val="east"/>
+      <a name="label" val="A"/>
+    </comp>
+    <comp lib="0" loc="(80,140)" name="Pin">
+      <a name="facing" val="east"/>
+      <a name="label" val="B"/>
+    </comp>
+    <comp lib="1" loc="(150,120)" name="AND Gate"/>
+    <comp lib="0" loc="(220,120)" name="Pin">
+      <a name="facing" val="west"/>
+      <a name="output" val="true"/>
+      <a name="label" val="Y"/>
+    </comp>
+    <wire from="(80,100)" to="(130,100)"/>
+    <wire from="(80,140)" to="(130,140)"/>
+    <wire from="(150,120)" to="(220,120)"/>
+  </circuit>
+  <circuit name="Demo">
+    <a name="circuit" val="Demo"/>
+    <comp lib="0" loc="(60,80)" name="Pin">
+      <a name="facing" val="east"/>
+      <a name="label" val="In"/>
+    </comp>
+    <comp loc="(140,100)" name="MissingGate"/>
+    <comp lib="0" loc="(240,100)" name="Pin">
+      <a name="facing" val="west"/>
+      <a name="output" val="true"/>
+      <a name="label" val="Out"/>
+    </comp>
+    <wire from="(60,80)" to="(140,80)"/>
+    <wire from="BOGUS" to="(240,100)"/>
+  </circuit>
+</project>
