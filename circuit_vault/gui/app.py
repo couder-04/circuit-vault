@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -504,8 +505,8 @@ class MainWindow(QMainWindow):
 
     # ----- Tab 3 Build -----
     def _build_tab_build(self) -> QWidget:
-        w = QWidget()
-        layout = QVBoxLayout(w)
+        page = QWidget()
+        layout = QVBoxLayout(page)
         layout.addWidget(QLabel("Step 1 — Describe the circuit"))
         self.desc = QPlainTextEdit()
         self.desc.setPlaceholderText("e.g. 4-bit ripple carry adder")
@@ -539,7 +540,8 @@ class MainWindow(QMainWindow):
         self.comp_checks: dict[str, QCheckBox] = {}
         self._rebuild_component_checks()
         scroll.setWidget(self._comp_host)
-        scroll.setMinimumHeight(160)
+        scroll.setMinimumHeight(120)
+        scroll.setMaximumHeight(200)
         layout.addWidget(scroll)
 
         layout.addWidget(QLabel("Your circuits from this .circ (subcircuits)"))
@@ -570,11 +572,10 @@ class MainWindow(QMainWindow):
         custom_scroll = QScrollArea()
         custom_scroll.setWidgetResizable(True)
         custom_scroll.setWidget(self.custom_list_host)
-        custom_scroll.setMinimumHeight(90)
-        custom_scroll.setMaximumHeight(160)
+        custom_scroll.setMinimumHeight(70)
+        custom_scroll.setMaximumHeight(140)
         layout.addWidget(custom_scroll)
         self._custom_rows: dict[str, tuple[QLineEdit, QWidget]] = {}
-
 
         io = QHBoxLayout()
         self.inputs = QLineEdit()
@@ -625,7 +626,16 @@ class MainWindow(QMainWindow):
         build_btn = QPushButton("Build & Merge")
         build_btn.clicked.connect(self._do_build_merge)
         layout.addWidget(build_btn)
-        return w
+        layout.addStretch(1)
+
+        # Whole Build tab scrolls so Merge / Step 3 stay reachable on small screens
+        outer = QScrollArea()
+        outer.setWidgetResizable(True)
+        outer.setWidget(page)
+        outer.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        outer.setFrameShape(QFrame.Shape.NoFrame)
+        return outer
 
     def _rebuild_component_checks(self) -> None:
         while self.comp_layout.count():
