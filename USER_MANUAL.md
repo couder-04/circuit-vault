@@ -2,6 +2,9 @@
 
 Copy-paste guide for a **new computer** (Windows, macOS, or Linux). Works with classic **Logisim** and **Logisim Evolution**.
 
+**Tool repo:** [https://github.com/couder-04/circuit-vault](https://github.com/couder-04/circuit-vault)  
+(Your **lab** backup is a separate empty repo you create yourself — see setup steps.)
+
 ---
 
 ## What this does
@@ -44,7 +47,7 @@ git --version
 
 ```bash
 cd ~/code_playground   # or any folder you like
-git clone https://github.com/YOU/circuit-vault.git
+git clone https://github.com/couder-04/circuit-vault.git
 cd circuit-vault
 ```
 
@@ -52,7 +55,7 @@ Windows PowerShell example:
 
 ```powershell
 cd $HOME\code_playground
-git clone https://github.com/YOU/circuit-vault.git
+git clone https://github.com/couder-04/circuit-vault.git
 cd circuit-vault
 ```
 
@@ -63,14 +66,14 @@ Copy the whole `circuit-vault` project directory to this machine (USB, cloud dri
 ### Install
 
 ```bash
-cd /path/to/circuit-vault
+cd circuit-vault   # the folder you just cloned from couder-04/circuit-vault
 python3 -m pip install -e ".[dev]"
 ```
 
 Windows:
 
 ```powershell
-cd C:\path\to\circuit-vault
+cd circuit-vault
 py -3.11 -m pip install -e ".[dev]"
 ```
 
@@ -99,8 +102,8 @@ Clone the **lab** repo (the one you linked in Setup — not necessarily the tool
 
 ```bash
 cd ~/Documents   # or wherever you keep coursework
-git clone https://github.com/YOU/YOUR-LAB-REPO.git
-cd YOUR-LAB-REPO
+git clone https://github.com/YOUR_USERNAME/logisim-lab.git
+cd logisim-lab
 ls *.circ          # Windows: dir *.circ
 ls circuit-vault/ # finals from the other machine, if you had marked any
 ```
@@ -127,7 +130,7 @@ circuit-vault gui
 ### Setup wizard (once per computer)
 
 1. Paste **GitHub lab repo URL**  
-   Example: `https://github.com/YOU/YOUR-LAB-REPO.git`
+   Example: `https://github.com/YOUR_USERNAME/logisim-lab.git`
 2. Optional: name + email (used in git commits)
 3. Paste **access token** (stored in this computer’s credential store)
 4. **Choose .circ to protect first…** → pick your file  
@@ -226,7 +229,7 @@ On a new computer you **must** enter the token again (credentials do not travel 
 2. On machine B: in the lab folder:
 
 ```bash
-cd /path/to/YOUR-LAB-REPO
+cd ~/Documents/logisim-lab   # or wherever your lab folder is
 git pull
 circuit-vault gui
 ```
@@ -247,7 +250,7 @@ circuit-vault open /FULL/PATH/TO/file.circ
 
 # Link GitHub (once per computer)
 circuit-vault setup \
-  --repo https://github.com/YOU/YOUR-LAB-REPO.git \
+  --repo https://github.com/YOUR_USERNAME/logisim-lab.git \
   --name "Your Name" \
   --email "you@school.edu" \
   --token YOUR_PAT
@@ -304,7 +307,7 @@ Token: OS credential store (service name used by Circuit Vault / `keyring`).
 From the tool repo (if you have fixtures):
 
 ```bash
-cd /path/to/circuit-vault
+cd ~/code_playground/circuit-vault   # or wherever you cloned couder-04/circuit-vault
 mkdir -p gui-sandbox
 cp tests/fixtures/main.circ tests/fixtures/shared_incoming.circ gui-sandbox/
 # Windows: copy tests\fixtures\main.circ gui-sandbox\
@@ -336,20 +339,21 @@ circuit-vault gui
 
 ```bash
 # 1) Install the tool
-cd /path/to/circuit-vault
+git clone https://github.com/couder-04/circuit-vault.git
+cd circuit-vault
 python3 -m pip install -e ".[dev]"
 
-# 2) Get lab files
+# 2) Get lab files (your own lab backup repo — not the tool repo)
 cd ~/Documents
-git clone https://github.com/YOU/YOUR-LAB-REPO.git
-cd YOUR-LAB-REPO
+git clone https://github.com/YOUR_USERNAME/logisim-lab.git
+cd logisim-lab
 
 # 3) GUI: link GitHub + choose .circ (once on this computer)
 circuit-vault gui
 
 # Or CLI equivalent:
 circuit-vault open /FULL/PATH/TO/file.circ
-circuit-vault setup --repo https://github.com/YOU/YOUR-LAB-REPO.git --token YOUR_PAT
+circuit-vault setup --repo https://github.com/YOUR_USERNAME/logisim-lab.git --token YOUR_PAT
 circuit-vault status
 circuit-vault mark "CIRCUIT_NAME"
 ```

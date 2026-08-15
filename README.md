@@ -1,5 +1,7 @@
 # Circuit Vault
 
+**Tool repo:** [https://github.com/couder-04/circuit-vault](https://github.com/couder-04/circuit-vault)
+
 Protect **Logisim** and **Logisim Evolution** `.circ` files on **Windows**, **macOS**, and **Linux**. Per-circuit finals, surgical restore, shared-file import, Claude-assisted build, and automatic GitHub backup — all from the GUI.
 
 | | Supported |
@@ -136,7 +138,7 @@ Clone the **tool** repo (not the lab repo), then install editable:
 ```bash
 # macOS / Linux
 cd ~/code_playground          # any folder you like
-git clone https://github.com/YOU/circuit-vault.git
+git clone https://github.com/couder-04/circuit-vault.git
 cd circuit-vault
 python3 -m pip install -e ".[dev]"
 ```
@@ -144,7 +146,7 @@ python3 -m pip install -e ".[dev]"
 ```powershell
 # Windows
 cd $HOME\code_playground
-git clone https://github.com/YOU/circuit-vault.git
+git clone https://github.com/couder-04/circuit-vault.git
 cd circuit-vault
 py -3.11 -m pip install -e ".[dev]"
 ```
