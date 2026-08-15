@@ -677,10 +677,22 @@ class CircuitVaultApp:
             from circuit_vault.parser import parse_circuit_bytes
 
             built_el = parse_circuit_bytes(text)
-            missing = missing_subcircuit_names(
-                built_el, set(list_circuits(project)), self_name=name
-            )
+            known = set(list_circuits(project))
+            missing = missing_subcircuit_names(built_el, known, self_name=name)
             if missing:
+                from circuit_vault.promptgen import generate_missing_subcircuit_fix_prompt
+
+                fix = generate_missing_subcircuit_fix_prompt(
+                    circuit_name=name,
+                    missing=missing,
+                    available_circuits=sorted(known),
+                    broken_xml=text.decode("utf-8", errors="replace")
+                    if isinstance(text, (bytes, bytearray))
+                    else str(text),
+                )
+                preview = dict(preview or {})
+                preview["missing_subcircuits"] = missing
+                preview["fix_prompt"] = fix
                 return BuildMergeResult(
                     ok=False,
                     backup_path=bak,
@@ -692,25 +704,44 @@ class CircuitVaultApp:
 
             vr = validate_project(project)
             if not vr.ok:
-                # Prefer a clean subcircuit message if that is what failed
                 dangling = [
-                    e
-                    for e in vr.errors
-                    if "unresolved subcircuit" in e.lower()
+                    e for e in vr.errors if "unresolved subcircuit" in e.lower()
                 ]
-                if dangling and len(dangling) == len(vr.errors):
-                    # Re-parse missing names from errors as fallback
-                    miss = missing_subcircuit_names(
-                        built_el, set(list_circuits(project)) - {name}, self_name=name
-                    )
-                    if miss:
-                        return BuildMergeResult(
-                            ok=False,
-                            backup_path=bak,
-                            message=format_missing_subcircuits_help(name, miss),
-                            preview=preview,
+                miss = missing_subcircuit_names(
+                    built_el, set(list_circuits(project)) - {name}, self_name=name
+                )
+                if miss or dangling:
+                    from circuit_vault.promptgen import generate_missing_subcircuit_fix_prompt
+
+                    if not miss:
+                        # Parse names from error text as fallback
+                        import re as _re
+
+                        miss = sorted(
+                            {
+                                m.group(1)
+                                for e in dangling
+                                for m in [_re.search(r"reference '([^']+)'", e)]
+                                if m
+                            }
                         )
-                # Deduplicate noisy repeated lines
+                    fix = generate_missing_subcircuit_fix_prompt(
+                        circuit_name=name,
+                        missing=miss,
+                        available_circuits=sorted(set(list_circuits(project)) - {name}),
+                        broken_xml=text.decode("utf-8", errors="replace")
+                        if isinstance(text, (bytes, bytearray))
+                        else str(text),
+                    )
+                    preview = dict(preview or {})
+                    preview["missing_subcircuits"] = miss
+                    preview["fix_prompt"] = fix
+                    return BuildMergeResult(
+                        ok=False,
+                        backup_path=bak,
+                        message=format_missing_subcircuits_help(name, miss),
+                        preview=preview,
+                    )
                 uniq: list[str] = []
                 for e in vr.errors:
                     if e not in uniq:

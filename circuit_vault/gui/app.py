@@ -200,7 +200,9 @@ class MainWindow(QMainWindow):
         self.resize(900, 640)
         self.app_core = app_core or CircuitVaultApp()
         self._fingerprint = None
-        self._custom_components: list[tuple[str, str]] = []  # (exact name, optional what-it-does)
+        self._custom_components: list[str] = []  # exact names; descriptions live in row editors
+        self._custom_rows: dict[str, tuple] = {}
+
         self._incoming_path: Path | None = None
         self._incoming_scan = []
         self._build_preview = {}
@@ -542,8 +544,9 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(QLabel("Your circuits from this .circ (subcircuits)"))
         custom_hint = QLabel(
-            "Name must match a circuit in the open .circ exactly (same spelling as My File). "
-            "Optional: say briefly what that circuit does so Claude wires it correctly."
+            "Add each circuit by its exact My File name, then give a brief description "
+            "(pins / what it does) so Claude builds better XML. "
+            "Example description: 1-bit full adder — A, B, Cin in; Sum, Cout out."
         )
         custom_hint.setWordWrap(True)
         custom_hint.setStyleSheet("color:#555; font-size:12px;")
@@ -560,16 +563,18 @@ class MainWindow(QMainWindow):
         add_row.addWidget(add_btn)
         layout.addLayout(add_row)
 
-        desc_row = QHBoxLayout()
-        self.custom_desc_edit = QLineEdit()
-        self.custom_desc_edit.setPlaceholderText(
-            "Optional — what it does (e.g. 1-bit full adder: A,B,Cin → Sum,Cout)"
-        )
-        desc_row.addWidget(self.custom_desc_edit)
-        layout.addLayout(desc_row)
-        self.custom_chips = QLabel("")
-        self.custom_chips.setWordWrap(True)
-        layout.addWidget(self.custom_chips)
+        self.custom_list_host = QWidget()
+        self.custom_list_layout = QVBoxLayout(self.custom_list_host)
+        self.custom_list_layout.setContentsMargins(0, 0, 0, 0)
+        self.custom_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        custom_scroll = QScrollArea()
+        custom_scroll.setWidgetResizable(True)
+        custom_scroll.setWidget(self.custom_list_host)
+        custom_scroll.setMinimumHeight(90)
+        custom_scroll.setMaximumHeight(160)
+        layout.addWidget(custom_scroll)
+        self._custom_rows: dict[str, tuple[QLineEdit, QWidget]] = {}
+
 
         io = QHBoxLayout()
         self.inputs = QLineEdit()
@@ -663,7 +668,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Name must match My File",
-                f"“{name}” is not a circuit in the open .circ.\n\n"
+                f'"{name}" is not a circuit in the open .circ.\n\n'
                 "Use the exact name shown under My File "
                 "(same spelling, spaces, and capitals).\n\n"
                 + (
@@ -673,20 +678,43 @@ class MainWindow(QMainWindow):
                 ),
             )
             return
-        if any(n == name for n, _ in self._custom_components):
+        if name in self._custom_rows:
+            QMessageBox.information(self, "Already added", f'"{name}" is already in the list.')
             return
-        what = self.custom_desc_edit.text().strip()
-        self._custom_components.append((name, what))
+
+        row = QWidget()
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(0, 2, 0, 2)
+        name_lab = QLabel(name)
+        name_lab.setMinimumWidth(120)
+        name_lab.setStyleSheet("font-weight:600;")
+        desc = QLineEdit()
+        desc.setPlaceholderText(
+            "Brief description for Claude (e.g. 1-bit full adder: A,B,Cin → Sum,Cout)"
+        )
+        remove = QPushButton("Remove")
+        remove.clicked.connect(lambda: self._remove_custom_comp(name))
+        hl.addWidget(name_lab)
+        hl.addWidget(desc, stretch=1)
+        hl.addWidget(remove)
+        self.custom_list_layout.addWidget(row)
+        self._custom_rows[name] = (desc, row)
+        self._custom_components.append(name)
         self.custom_edit.clear()
-        self.custom_desc_edit.clear()
-        lines = []
-        for n, d in self._custom_components:
-            lines.append(f"• {n}" + (f" — {d}" if d else " — (no description)"))
-        self.custom_chips.setText("Using from this .circ:\n" + "\n".join(lines))
+
+    def _remove_custom_comp(self, name: str) -> None:
+        entry = self._custom_rows.pop(name, None)
+        if entry:
+            _desc, row = entry
+            self.custom_list_layout.removeWidget(row)
+            row.deleteLater()
+        self._custom_components = [n for n in self._custom_components if n != name]
 
     def _selected_components(self) -> list[str]:
         picked = [n for n, cb in self.comp_checks.items() if cb.isChecked()]
-        for name, what in self._custom_components:
+        for name in self._custom_components:
+            entry = self._custom_rows.get(name)
+            what = entry[0].text().strip() if entry else ""
             if what:
                 picked.append(f"{name} — {what}")
             else:
@@ -745,13 +773,55 @@ class MainWindow(QMainWindow):
             return
         self._build_preview = preview
         if not ok:
-            self.preview_label.setText(f"Not valid yet: {preview.get('error')}")
+            err = str(preview.get("error") or "invalid XML")
+            self.preview_label.setText(f"Not valid yet: {err}")
+            fix = preview.get("fix_prompt")
+            if isinstance(fix, str) and fix.strip():
+                self.prompt_box.setPlainText(fix)
+                self.preview_label.setText(
+                    err
+                    + "\n\nA fix prompt was put in Step 2 — Copy it into Claude, "
+                    "then paste the corrected XML here."
+                )
             return
         tip = preview.get("tip") or ""
         self.preview_label.setText(
             f"{preview.get('name')}: {preview.get('input_count')} in, "
             f"{preview.get('output_count')} out, {preview.get('component_count')} parts. {tip}"
         )
+
+    def _offer_missing_fix_prompt(self, message: str, preview: dict | None) -> None:
+        """Show missing-subcircuit help and load a Claude fix prompt into Step 2."""
+        preview = preview or {}
+        fix = preview.get("fix_prompt")
+        if isinstance(fix, str) and fix.strip():
+            self.prompt_box.setPlainText(fix)
+            self.preview_label.setText(
+                message.split("\n")[0]
+                + " — fix prompt is in Step 2. Copy → Claude → paste new XML in Step 3."
+            )
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Missing circuits in this .circ")
+        box.setText("Required subcircuits are missing — not a crash.")
+        box.setInformativeText(message)
+        copy_btn = box.addButton("Copy fix prompt", QMessageBox.ButtonRole.AcceptRole)
+        open_btn = box.addButton("Open Claude", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is copy_btn and isinstance(fix, str) and fix.strip():
+            QApplication.clipboard().setText(fix)
+            QMessageBox.information(
+                self,
+                "Copied",
+                "Fix prompt copied. Paste into Claude, then put the new XML in Step 3.",
+            )
+        elif clicked is open_btn:
+            if isinstance(fix, str) and fix.strip():
+                QApplication.clipboard().setText(fix)
+            webbrowser.open("https://claude.ai")
 
     def _do_build_merge(self) -> None:
         self._validate_paste()
@@ -766,12 +836,16 @@ class MainWindow(QMainWindow):
             preferred_name=preferred,
         )
         if not result.ok:
-            box = QMessageBox(self)
-            box.setIcon(QMessageBox.Icon.Warning)
-            box.setWindowTitle("Could not merge")
-            box.setText(result.message.split("\n")[0][:120])
-            box.setInformativeText(result.message)
-            box.exec()
+            preview = result.preview or {}
+            if preview.get("fix_prompt") or preview.get("missing_subcircuits"):
+                self._offer_missing_fix_prompt(result.message, preview)
+            else:
+                box = QMessageBox(self)
+                box.setIcon(QMessageBox.Icon.Warning)
+                box.setWindowTitle("Could not merge")
+                box.setText(result.message.split("\n")[0][:120])
+                box.setInformativeText(result.message)
+                box.exec()
         else:
             tip = (result.preview or {}).get("tip") or ""
             QMessageBox.information(

@@ -169,23 +169,18 @@ def format_missing_subcircuits_help(
     """User-facing explanation when Build XML needs other circuits first."""
     listed = "\n".join(f"  • {m}" for m in missing)
     return (
-        f"“{circuit_name}” uses other circuits that are not in this .circ file yet:\n"
+        f'"{circuit_name}" uses other circuits that are not in this .circ file yet:\n'
         f"{listed}\n\n"
-        "Fix one of these ways:\n"
-        "1. Build or Import those circuits into this file first "
-        "(e.g. make a working “Full Adder”, Mark Final), then Build & Merge again.\n"
-        "2. Or regenerate the XML using only library gates "
-        "(AND / OR / XOR / NOT with lib=\"1\") — do not place "
-        "Half Adder / Full Adder as blocks unless they already exist in the file.\n\n"
-        "Tip: In Build, only tick custom component names that already appear "
-        "as circuits in My File."
+        "This is not a crash — the XML is incomplete for this file.\n\n"
+        'Click "Copy fix prompt" (also filled into Step 2) and paste it into Claude '
+        "so it returns corrected XML that either expands those blocks into gates "
+        "or only uses subcircuit names that already exist in your .circ.\n\n"
+        "Then paste the new XML into Step 3 and Build & Merge again."
     )
 
 def _wire_errors(el: etree._Element, circuit_name: str) -> list[str]:
     errors: list[str] = []
-    for wire in el.iter():
-        if _local(wire) != "wire":
-            continue
+    for wire in el.iter("wire"):
         for attr in ("from", "to"):
             val = wire.get(attr)
             if val is None:
@@ -201,7 +196,7 @@ def _wire_errors(el: etree._Element, circuit_name: str) -> list[str]:
 
 def _pin_warnings(el: etree._Element, circuit_name: str) -> list[str]:
     """Warn if a circuit has comps but no Pin instances (never an error)."""
-    comps = [c for c in el.iter() if _local(c) == "comp"]
+    comps = list(el.iter("comp"))
     if not comps:
         return []
     has_pin = any(c.get("name") == "Pin" for c in comps)
@@ -210,5 +205,10 @@ def _pin_warnings(el: etree._Element, circuit_name: str) -> list[str]:
     return []
 
 
-def _local(el: etree._Element) -> str:
-    return etree.QName(el).localname
+def _local(el: object) -> str:
+    tag = getattr(el, "tag", None)
+    if not isinstance(tag, str):
+        return ""
+    if "}" in tag:
+        return tag.rsplit("}", 1)[-1]
+    return tag

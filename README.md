@@ -340,11 +340,11 @@ Dots refresh every few seconds. Title shows classic vs Evolution for the open fi
 
 - **Target Logisim**: Auto / Evolution / classic (shapes the Claude prompt)
 - Description · **circuit name** · component checklist · inputs / outputs
-- **Your circuits from this .circ** — type the **exact** name as in My File (same spelling). Optional “what it does” helps Claude. Names that are not in the file are rejected.
+- **Your circuits from this .circ** — add the **exact** My File name, then fill a **brief description** on that row (pins / what it does) so Claude builds better XML. Remove if needed. Names that are not in the file are rejected.
 - **Generate Prompt** → **Copy** / **Open Claude**
 - Paste `<circuit>…</circuit>` or **Attach .xml** → validate → **Build & Merge**
 - If the circuit name already exists, a number is added (`Adder` → `Adder1`); success shows e.g. **Component Adder is ready!**
-- Missing subcircuit (e.g. needs `Full Adder` but it is not in the file) → add that circuit first, or regenerate with gates only
+- Missing subcircuit (e.g. needs `Full Adder` but it is not in the file) → app does **not** crash; it offers a **Copy fix prompt** for Claude to rewrite the XML (gates or only existing circuit names), then paste again and merge
 - Open the result in Logisim / Evolution and check wiring
 
 ### History

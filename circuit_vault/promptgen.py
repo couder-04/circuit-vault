@@ -346,6 +346,68 @@ def prepare_generated_circuit(
     return out, final_name, notes
 
 
+def generate_missing_subcircuit_fix_prompt(
+    *,
+    circuit_name: str,
+    missing: list[str],
+    available_circuits: list[str],
+    broken_xml: str,
+    description: str = "",
+    inputs: str = "",
+    outputs: str = "",
+) -> str:
+    """
+    Prompt for Claude to rewrite XML when required subcircuits were forgotten.
+    Prefers expanding into gates; may keep subcircuits only if they exist in-file.
+    """
+    miss = "\n".join(f"  - {m}" for m in missing) or "  - (unknown)"
+    avail = (
+        "\n".join(f"  - {n}" for n in sorted(available_circuits))
+        if available_circuits
+        else "  - (none — use library gates only)"
+    )
+    desc_line = description.strip() or "(same behavior as the broken XML)"
+    io_line = ""
+    if inputs.strip() or outputs.strip():
+        io_line = f"\nInputs: {inputs or '(unspecified)'}\nOutputs: {outputs or '(unspecified)'}\n"
+    # Keep prompt size reasonable
+    xml_snip = broken_xml.strip()
+    if len(xml_snip) > 12000:
+        xml_snip = xml_snip[:12000] + "\n<!-- …truncated… -->"
+
+    return f"""You previously generated Logisim circuit XML that cannot be merged because it
+references subcircuits that do NOT exist in the user's current .circ file.
+
+## Missing subcircuits (these names are NOT in the file)
+{miss}
+
+## Circuits that DO exist in the user's .circ (only these may be used as subcircuits)
+{avail}
+
+## Goal
+Rewrite ONE complete <circuit>…</circuit> for: {circuit_name}
+Intent: {desc_line}
+{io_line}
+## Rules (strict)
+1. Prefer expanding the missing blocks into library gates:
+   AND Gate / OR Gate / XOR Gate / NOT Gate / NAND Gate / NOR Gate with lib="1",
+   and Pin with lib="0".
+2. You may ONLY use a no-lib subcircuit instance `<comp name="ExactName"/>` if
+   ExactName appears in the "circuits that DO exist" list above — character for character.
+3. Do NOT invent Half Adder / Full Adder / other blocks unless that exact name is listed
+   as existing.
+4. Keep axis-aligned wires on a 10-unit grid; gate loc is the output tip; connect inputs
+   to real port offsets (AND/OR at loc (X,Y): inputs (X-50,Y-20) and (X-50,Y+20);
+   XOR: (X-60,Y-20)/(X-60,Y+20); NOT input at (X-30,Y)).
+5. Return ONLY the <circuit>…</circuit> XML — no markdown fences, no commentary.
+
+## Broken XML to fix
+```
+{xml_snip}
+```
+"""
+
+
 def generate_prompt(
     description: str,
     components: list[str],
@@ -406,9 +468,11 @@ def generate_prompt(
 ## Components to use (standard ticks AND custom names — use these verbatim)
 {comps}
 
-When a custom name includes “ — ” and a short description, the part before “ — ” is the
-exact Logisim circuit name that must appear as `<comp name="…"/>` (no lib). The description
-is only for your understanding of ports/behavior — do not put it in the XML name.
+Custom entries may look like `ExactName — brief description`.
+- The part BEFORE “ — ” is the exact Logisim circuit name for `<comp name="ExactName"/>` (no lib).
+- The part AFTER “ — ” is behavior/ports for you — use it to wire the block correctly; never put the description into the XML name attribute.
+- Prefer using those described subcircuits when the user listed them; expand into gates only if a name is missing from the allowed list.
+
 
 ## Specification
 Description: {description}
@@ -535,6 +599,12 @@ def validate_generated(
                 preview.get("name") or "circuit", missing
             )
             preview["missing_subcircuits"] = missing
+            preview["fix_prompt"] = generate_missing_subcircuit_fix_prompt(
+                circuit_name=preview.get("name") or "circuit",
+                missing=missing,
+                available_circuits=sorted(existing_names),
+                broken_xml=text.decode("utf-8", errors="replace"),
+            )
             return False, preview
 
     wrapped = wrap_circuit_as_project(text, fmt)
