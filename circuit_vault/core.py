@@ -33,6 +33,8 @@ from circuit_vault.splicer import SpliceError, backup, insert_circuit, splice
 from circuit_vault.validator import (
     HealthState,
     circuit_health,
+    format_missing_subcircuits_help,
+    missing_subcircuit_names,
     validate_circuit,
     validate_project,
 )
@@ -672,14 +674,51 @@ class CircuitVaultApp:
 
         try:
             # Name is Logisim-safe + unique (decimal suffix on clash) from prepare
+            from circuit_vault.parser import parse_circuit_bytes
+
+            built_el = parse_circuit_bytes(text)
+            missing = missing_subcircuit_names(
+                built_el, set(list_circuits(project)), self_name=name
+            )
+            if missing:
+                return BuildMergeResult(
+                    ok=False,
+                    backup_path=bak,
+                    message=format_missing_subcircuits_help(name, missing),
+                    preview=preview,
+                )
+
             project = insert_circuit(project, text)
 
             vr = validate_project(project)
             if not vr.ok:
+                # Prefer a clean subcircuit message if that is what failed
+                dangling = [
+                    e
+                    for e in vr.errors
+                    if "unresolved subcircuit" in e.lower()
+                ]
+                if dangling and len(dangling) == len(vr.errors):
+                    # Re-parse missing names from errors as fallback
+                    miss = missing_subcircuit_names(
+                        built_el, set(list_circuits(project)) - {name}, self_name=name
+                    )
+                    if miss:
+                        return BuildMergeResult(
+                            ok=False,
+                            backup_path=bak,
+                            message=format_missing_subcircuits_help(name, miss),
+                            preview=preview,
+                        )
+                # Deduplicate noisy repeated lines
+                uniq: list[str] = []
+                for e in vr.errors:
+                    if e not in uniq:
+                        uniq.append(e)
                 return BuildMergeResult(
                     ok=False,
                     backup_path=bak,
-                    message="Build merge aborted — invalid result: " + "; ".join(vr.errors),
+                    message="Build merge aborted — invalid result:\n" + "\n".join(uniq),
                     preview=preview,
                 )
             target_path.write_bytes(project.raw_bytes)

@@ -401,9 +401,14 @@ def generate_prompt(
 - Red wires in Logisim mean an endpoint is floating — avoid that completely.
 {port_guide_for_prompt()}
 - Built-in library components include numeric `lib="N"`. Subcircuit instances omit `lib`.
+- **Subcircuits (important):** Do NOT emit `<comp name="Half Adder"/>` or `<comp name="Full Adder"/>` (no lib) unless those exact names are listed under Components below as custom blocks that already exist in the user’s file. Prefer expanding half/full adders into XOR/AND/OR gates with lib="1". Placing a missing subcircuit makes Build merge fail.
 - Preserve attribute order similar to the skeleton.{extra}
 ## Components to use (standard ticks AND custom names — use these verbatim)
 {comps}
+
+When a custom name includes “ — ” and a short description, the part before “ — ” is the
+exact Logisim circuit name that must appear as `<comp name="…"/>` (no lib). The description
+is only for your understanding of ports/behavior — do not put it in the XML name.
 
 ## Specification
 Description: {description}
@@ -513,6 +518,23 @@ def validate_generated(
             preview["error"] = (
                 "Diagonal wire found — wires must be horizontal or vertical only."
             )
+            return False, preview
+
+    # Warn early if XML places Half Adder / Full Adder / etc. that aren't in the file
+    if existing_names is not None:
+        from circuit_vault.validator import (
+            format_missing_subcircuits_help,
+            missing_subcircuit_names,
+        )
+
+        missing = missing_subcircuit_names(
+            el, set(existing_names), self_name=preview.get("name")
+        )
+        if missing:
+            preview["error"] = format_missing_subcircuits_help(
+                preview.get("name") or "circuit", missing
+            )
+            preview["missing_subcircuits"] = missing
             return False, preview
 
     wrapped = wrap_circuit_as_project(text, fmt)

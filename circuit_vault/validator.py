@@ -127,18 +127,59 @@ def _dangling_subcircuit_errors(
     el: etree._Element, circuit_name: str, name_set: set[str]
 ) -> list[str]:
     errors: list[str] = []
+    seen: set[str] = set()
     for comp in el.iter():
         ref = is_subcircuit_instance(comp, name_set)
         if ref is None:
             continue
         if ref == circuit_name:
             continue
-        if ref not in name_set:
+        if ref not in name_set and ref not in seen:
+            seen.add(ref)
             errors.append(
                 f"Circuit {circuit_name!r}: unresolved subcircuit reference {ref!r}"
             )
     return errors
 
+
+def missing_subcircuit_names(
+    el: etree._Element,
+    known_circuits: set[str],
+    *,
+    self_name: str | None = None,
+) -> list[str]:
+    """Unique subcircuit names referenced (no lib=) that are not in *known_circuits*."""
+    missing: list[str] = []
+    seen: set[str] = set()
+    own = self_name or el.get("name")
+    for comp in el.iter("comp"):
+        ref = is_subcircuit_instance(comp, known_circuits)
+        if ref is None or ref == own:
+            continue
+        if ref not in known_circuits and ref not in seen:
+            seen.add(ref)
+            missing.append(ref)
+    return missing
+
+
+def format_missing_subcircuits_help(
+    circuit_name: str,
+    missing: list[str],
+) -> str:
+    """User-facing explanation when Build XML needs other circuits first."""
+    listed = "\n".join(f"  • {m}" for m in missing)
+    return (
+        f"“{circuit_name}” uses other circuits that are not in this .circ file yet:\n"
+        f"{listed}\n\n"
+        "Fix one of these ways:\n"
+        "1. Build or Import those circuits into this file first "
+        "(e.g. make a working “Full Adder”, Mark Final), then Build & Merge again.\n"
+        "2. Or regenerate the XML using only library gates "
+        "(AND / OR / XOR / NOT with lib=\"1\") — do not place "
+        "Half Adder / Full Adder as blocks unless they already exist in the file.\n\n"
+        "Tip: In Build, only tick custom component names that already appear "
+        "as circuits in My File."
+    )
 
 def _wire_errors(el: etree._Element, circuit_name: str) -> list[str]:
     errors: list[str] = []

@@ -200,7 +200,7 @@ class MainWindow(QMainWindow):
         self.resize(900, 640)
         self.app_core = app_core or CircuitVaultApp()
         self._fingerprint = None
-        self._custom_components: list[str] = []
+        self._custom_components: list[tuple[str, str]] = []  # (exact name, optional what-it-does)
         self._incoming_path: Path | None = None
         self._incoming_scan = []
         self._build_preview = {}
@@ -540,15 +540,35 @@ class MainWindow(QMainWindow):
         scroll.setMinimumHeight(160)
         layout.addWidget(scroll)
 
+        layout.addWidget(QLabel("Your circuits from this .circ (subcircuits)"))
+        custom_hint = QLabel(
+            "Name must match a circuit in the open .circ exactly (same spelling as My File). "
+            "Optional: say briefly what that circuit does so Claude wires it correctly."
+        )
+        custom_hint.setWordWrap(True)
+        custom_hint.setStyleSheet("color:#555; font-size:12px;")
+        layout.addWidget(custom_hint)
+
         add_row = QHBoxLayout()
         self.custom_edit = QLineEdit()
-        self.custom_edit.setPlaceholderText("Add your own component name")
+        self.custom_edit.setPlaceholderText(
+            "Exact circuit name from My File (e.g. Full Adder)"
+        )
         add_btn = QPushButton("Add")
         add_btn.clicked.connect(self._add_custom_comp)
-        add_row.addWidget(self.custom_edit)
+        add_row.addWidget(self.custom_edit, stretch=1)
         add_row.addWidget(add_btn)
         layout.addLayout(add_row)
+
+        desc_row = QHBoxLayout()
+        self.custom_desc_edit = QLineEdit()
+        self.custom_desc_edit.setPlaceholderText(
+            "Optional — what it does (e.g. 1-bit full adder: A,B,Cin → Sum,Cout)"
+        )
+        desc_row.addWidget(self.custom_desc_edit)
+        layout.addLayout(desc_row)
         self.custom_chips = QLabel("")
+        self.custom_chips.setWordWrap(True)
         layout.addWidget(self.custom_chips)
 
         io = QHBoxLayout()
@@ -628,14 +648,50 @@ class MainWindow(QMainWindow):
 
     def _add_custom_comp(self) -> None:
         name = self.custom_edit.text().strip()
-        if name and name not in self._custom_components:
-            self._custom_components.append(name)
-            self.custom_edit.clear()
-            self.custom_chips.setText("Custom: " + ", ".join(self._custom_components))
+        if not name:
+            return
+        known: set[str] = set()
+        if self.app_core.circ_path is not None:
+            try:
+                from circuit_vault.parser import list_circuits
+
+                if self.app_core.project is not None:
+                    known = set(list_circuits(self.app_core.project))
+            except Exception:  # noqa: BLE001
+                known = set()
+        if known and name not in known:
+            QMessageBox.warning(
+                self,
+                "Name must match My File",
+                f"“{name}” is not a circuit in the open .circ.\n\n"
+                "Use the exact name shown under My File "
+                "(same spelling, spaces, and capitals).\n\n"
+                + (
+                    "Circuits in this file:\n  • "
+                    + "\n  • ".join(sorted(known)[:30])
+                    + ("\n  • …" if len(known) > 30 else "")
+                ),
+            )
+            return
+        if any(n == name for n, _ in self._custom_components):
+            return
+        what = self.custom_desc_edit.text().strip()
+        self._custom_components.append((name, what))
+        self.custom_edit.clear()
+        self.custom_desc_edit.clear()
+        lines = []
+        for n, d in self._custom_components:
+            lines.append(f"• {n}" + (f" — {d}" if d else " — (no description)"))
+        self.custom_chips.setText("Using from this .circ:\n" + "\n".join(lines))
 
     def _selected_components(self) -> list[str]:
         picked = [n for n, cb in self.comp_checks.items() if cb.isChecked()]
-        return picked + list(self._custom_components)
+        for name, what in self._custom_components:
+            if what:
+                picked.append(f"{name} — {what}")
+            else:
+                picked.append(name)
+        return picked
 
     def _gen_prompt(self) -> None:
         fmt = self._selected_build_format()
@@ -710,7 +766,12 @@ class MainWindow(QMainWindow):
             preferred_name=preferred,
         )
         if not result.ok:
-            QMessageBox.warning(self, "Could not merge", result.message)
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle("Could not merge")
+            box.setText(result.message.split("\n")[0][:120])
+            box.setInformativeText(result.message)
+            box.exec()
         else:
             tip = (result.preview or {}).get("tip") or ""
             QMessageBox.information(
