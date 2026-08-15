@@ -170,12 +170,17 @@ def build_prompt_cmd(
 def build_merge_cmd(
     generated: Path = typer.Argument(..., exists=True, help="Generated circuit XML"),
     into: Path = typer.Option(..., "--into", exists=True, help="Target .circ"),
+    name: str = typer.Option(
+        "",
+        "--name",
+        help="Circuit name (if taken, a decimal suffix is added)",
+    ),
 ) -> None:
     """Validate generated XML, merge into target, sync."""
     data = generated.read_bytes()
     # Ensure target is known / open for sync dir
     core.open_project(into)
-    result = core.get_app().build_merge(data, into)
+    result = core.get_app().build_merge(data, into, preferred_name=name)
     if not result.ok:
         console.print(f"[red]{result.message}[/red]")
         raise typer.Exit(1)

@@ -46,7 +46,8 @@ git --version
 ### Option A — clone the tool repo
 
 ```bash
-cd ~/code_playground   # or any folder you like
+mkdir -p ~/Desktop/tracked_logism_lab
+cd ~/Desktop/tracked_logism_lab   # Desktop → tracked_logism_lab
 git clone https://github.com/couder-04/circuit-vault.git
 cd circuit-vault
 ```
@@ -54,7 +55,8 @@ cd circuit-vault
 Windows PowerShell example:
 
 ```powershell
-cd $HOME\code_playground
+mkdir $HOME\Desktop\tracked_logism_lab
+cd $HOME\Desktop\tracked_logism_lab
 git clone https://github.com/couder-04/circuit-vault.git
 cd circuit-vault
 ```
@@ -101,19 +103,20 @@ Circuit Vault protects a **project folder** that contains your `.circ`. That fol
 Clone the **lab** repo (the one you linked in Setup — not necessarily the tool repo):
 
 ```bash
-cd ~/Documents   # or wherever you keep coursework
-git clone https://github.com/YOUR_USERNAME/logisim-lab.git
-cd logisim-lab
+mkdir -p ~/Desktop/tracked_logism_lab
+cd ~/Desktop/tracked_logism_lab
+git clone https://github.com/YOUR_USERNAME/tracked_logism_lab.git lab
+cd lab
 ls *.circ          # Windows: dir *.circ
 ls circuit-vault/ # finals from the other machine, if you had marked any
 ```
 
 ### If this is the first time
 
-Put your `.circ` in a dedicated folder (recommended):
+Put your `.circ` in the **`lab`** folder (recommended):
 
 ```bash
-mkdir -p ~/Documents/logisim-lab   # Windows: mkdir %USERPROFILE%\Documents\logisim-lab
+mkdir -p ~/Desktop/tracked_logism_lab/lab   # Windows: mkdir %USERPROFILE%\Desktop\tracked_logism_lab\lab
 # copy or move your file there, e.g. main.circ
 ```
 
@@ -130,11 +133,11 @@ circuit-vault gui
 ### Setup wizard (once per computer)
 
 1. Paste **GitHub lab repo URL**  
-   Example: `https://github.com/YOUR_USERNAME/logisim-lab.git`
+   Example: `https://github.com/YOUR_USERNAME/tracked_logism_lab.git`
 2. Optional: name + email (used in git commits)
 3. Paste **access token** (stored in this computer’s credential store)
 4. **Choose .circ to protect first…** → pick your file  
-   Example: `~/Documents/logisim-lab/main.circ`
+   Example: `~/Desktop/tracked_logism_lab/lab/main.circ`
 5. Click **OK** — it does a test push
 
 You can **Cancel** the wizard to try features offline; link GitHub later under **Settings**.
@@ -192,12 +195,13 @@ Cross-format import (classic ↔ Evolution) is allowed but shows a warning — o
 
 1. Set **Target Logisim**: Auto (from open file), Evolution, or classic
 2. Describe the circuit (e.g. `4-bit ripple carry adder`)
-3. Check allowed components; **Add** custom names if needed
-4. Fill Inputs / Outputs
-5. **Generate Prompt** → **Copy** → optionally **Open Claude**
-6. Paste Claude’s `<circuit>…</circuit>` XML, or **Attach .xml**
-7. Preview line should show name + pin/part counts
-8. **Build & Merge** into your `.circ`
+3. Enter a **Circuit name** (e.g. `RippleAdder`). If that name already exists in the file, a number is added (`RippleAdder1`, `RippleAdder2`, …)
+4. Check allowed components; **Add** custom gate names if needed
+5. Fill Inputs / Outputs
+6. **Generate Prompt** → **Copy** → optionally **Open Claude**
+7. Paste Claude’s `<circuit>…</circuit>` XML, or **Attach .xml**
+8. Preview line should show the final name + pin/part counts
+9. **Build & Merge** into your `.circ` — dialog: **Component RippleAdder is ready!** (uses the final unique name)
 
 Open the file in Logisim afterward and **check wiring** — generated circuits can need a manual pass.
 
@@ -229,7 +233,7 @@ On a new computer you **must** enter the token again (credentials do not travel 
 2. On machine B: in the lab folder:
 
 ```bash
-cd ~/Documents/logisim-lab   # or wherever your lab folder is
+cd ~/Desktop/tracked_logism_lab/lab   # folder that contains your .circ
 git pull
 circuit-vault gui
 ```
@@ -250,7 +254,7 @@ circuit-vault open /FULL/PATH/TO/file.circ
 
 # Link GitHub (once per computer)
 circuit-vault setup \
-  --repo https://github.com/YOUR_USERNAME/logisim-lab.git \
+  --repo https://github.com/YOUR_USERNAME/tracked_logism_lab.git \
   --name "Your Name" \
   --email "you@school.edu" \
   --token YOUR_PAT
@@ -307,7 +311,7 @@ Token: OS credential store (service name used by Circuit Vault / `keyring`).
 From the tool repo (if you have fixtures):
 
 ```bash
-cd ~/code_playground/circuit-vault   # or wherever you cloned couder-04/circuit-vault
+cd ~/Desktop/tracked_logism_lab/circuit-vault   # or wherever you cloned couder-04/circuit-vault
 mkdir -p gui-sandbox
 cp tests/fixtures/main.circ tests/fixtures/shared_incoming.circ gui-sandbox/
 # Windows: copy tests\fixtures\main.circ gui-sandbox\
@@ -338,22 +342,24 @@ circuit-vault gui
 ## Quick block (new computer)
 
 ```bash
-# 1) Install the tool
+# 1) Desktop → tracked_logism_lab → tool + lab
+mkdir -p ~/Desktop/tracked_logism_lab/lab
+cd ~/Desktop/tracked_logism_lab
 git clone https://github.com/couder-04/circuit-vault.git
 cd circuit-vault
 python3 -m pip install -e ".[dev]"
 
-# 2) Get lab files (your own lab backup repo — not the tool repo)
-cd ~/Documents
-git clone https://github.com/YOUR_USERNAME/logisim-lab.git
-cd logisim-lab
+# 2) Get lab files into lab/ (your own lab backup repo — not the tool repo)
+cd ~/Desktop/tracked_logism_lab
+git clone https://github.com/YOUR_USERNAME/tracked_logism_lab.git lab
+cd lab
 
-# 3) GUI: link GitHub + choose .circ (once on this computer)
+# 3) GUI: link GitHub + choose .circ inside lab/ (once on this computer)
 circuit-vault gui
 
 # Or CLI equivalent:
-circuit-vault open /FULL/PATH/TO/file.circ
-circuit-vault setup --repo https://github.com/YOUR_USERNAME/logisim-lab.git --token YOUR_PAT
+circuit-vault open ~/Desktop/tracked_logism_lab/lab/main.circ
+circuit-vault setup --repo https://github.com/YOUR_USERNAME/tracked_logism_lab.git --token YOUR_PAT
 circuit-vault status
 circuit-vault mark "CIRCUIT_NAME"
 ```

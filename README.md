@@ -59,25 +59,29 @@ flowchart TD
 **Option A — browser**
 
 1. GitHub → **+** → **New repository**
-2. Name it (e.g. `logisim-lab`) · Public or Private
+2. Name it (e.g. `tracked_logism_lab`) · Public or Private
 3. Leave README / .gitignore / license **unchecked** (empty is easiest)
 4. **Create repository** → copy the HTTPS URL:
 
-   `https://github.com/YOUR_USERNAME/logisim-lab.git`
+   `https://github.com/YOUR_USERNAME/tracked_logism_lab.git`
 
 **Option B — GitHub CLI** (after you finish [§5a](#5a-install-and-log-in-with-github-cli-gh) below):
 
 ```bash
-gh repo create logisim-lab --private
+gh repo create tracked_logism_lab --private
 # prints the repo URL — copy it for the Circuit Vault setup wizard
-# later: gh repo clone YOUR_USERNAME/logisim-lab
+# later: gh repo clone YOUR_USERNAME/tracked_logism_lab
 ```
 
 Add `--public` instead of `--private` if you prefer a public lab repo.
 
 This is the **lab** backup repo (your `.circ` + finals). Separate from the Circuit Vault **tool** repo ([couder-04/circuit-vault](https://github.com/couder-04/circuit-vault)) you clone later.
 
-Circuit Vault’s GUI still needs a PAT for auto-sync (stored in Keychain / Credential Manager).
+**Sync always targets your lab repo.** Never paste the tool URL (`couder-04/circuit-vault`) into the setup wizard — that causes *Write access to repository not granted*.
+
+## 3. Personal access token (PAT)
+
+Circuit Vault’s GUI needs a PAT for auto-sync (stored in Keychain / Credential Manager).
 
 **If you use `gh auth login`**, you can often create a token from the CLI later, but the simplest first-time path is still the website:
 
@@ -95,38 +99,50 @@ Token is stored in the OS credential store — never commit it.
 
 Circuit Vault treats the **folder containing your `.circ`** as the Git project. Do **not** put the `.circ` directly in your home directory (`~` / `%USERPROFILE%`).
 
-**First time — create a dedicated folder and place the file:**
+Recommended layout on the **Desktop**:
+
+```text
+Desktop/
+  tracked_logism_lab/              ← outer folder (organizer)
+    lab/                           ← Git project GitHub backs up (.circ lives here)
+    circuit-vault/                 ← tool clone (install from here)
+```
+
+**First time — create folders and place the file:**
 
 ```bash
 # macOS / Linux
-mkdir -p ~/Documents/logisim-lab
-# move/copy your .circ into that folder, e.g. main.circ
+mkdir -p ~/Desktop/tracked_logism_lab/lab
+# move/copy your .circ into lab/, e.g. main.circ
 ```
 
 ```powershell
 # Windows
-mkdir $HOME\Documents\logisim-lab
-# move/copy your .circ into that folder
+mkdir $HOME\Desktop\tracked_logism_lab\lab
+# move/copy your .circ into lab\
 ```
 
-**Already synced from another machine — clone the lab repo instead:**
+**Already synced from another machine — clone the lab repo into `lab`:**
 
 ```bash
-cd ~/Documents
-gh repo clone YOUR_USERNAME/logisim-lab
-# same as: git clone https://github.com/YOUR_USERNAME/logisim-lab.git
-cd logisim-lab
-# expect: *.circ  and usually circuit-vault/
+mkdir -p ~/Desktop/tracked_logism_lab
+cd ~/Desktop/tracked_logism_lab
+gh repo clone YOUR_USERNAME/tracked_logism_lab lab
+# same as: git clone https://github.com/YOUR_USERNAME/tracked_logism_lab.git lab
+cd lab
+# expect: *.circ  and usually circuit-vault/ (finals folder)
 ```
 
-Expected layout after setup:
+Expected layout inside `lab/` after setup:
 
 ```text
-logisim-lab/                 ← this folder is what GitHub backs up
-  main.circ                   ← live Logisim / Evolution file
-  circuit-vault/             ← per-circuit finals (*.xml)
-  *.circ.bak-…               ← backups from restore / merge
-  .git/                      ← created/used by Circuit Vault
+Desktop/tracked_logism_lab/
+  lab/                       ← this folder is what GitHub backs up
+    main.circ                 ← live Logisim / Evolution file
+    circuit-vault/           ← per-circuit finals (*.xml)
+    *.circ.bak-…             ← backups from restore / merge
+    .git/                    ← created/used by Circuit Vault
+  circuit-vault/             ← the Circuit Vault tool (separate)
 ```
 
 Classic and Evolution both use `.circ`; Circuit Vault detects which.
@@ -190,7 +206,8 @@ Clone the **tool** repo (not the lab repo), then install editable.
 
 ```bash
 # macOS / Linux
-cd ~/code_playground          # any folder you like
+mkdir -p ~/Desktop/tracked_logism_lab
+cd ~/Desktop/tracked_logism_lab
 gh repo clone couder-04/circuit-vault
 cd circuit-vault
 python3 -m pip install -e ".[dev]"
@@ -198,7 +215,8 @@ python3 -m pip install -e ".[dev]"
 
 ```powershell
 # Windows
-cd $HOME\code_playground
+mkdir $HOME\Desktop\tracked_logism_lab
+cd $HOME\Desktop\tracked_logism_lab
 gh repo clone couder-04/circuit-vault
 cd circuit-vault
 py -3.11 -m pip install -e ".[dev]"
@@ -207,6 +225,8 @@ py -3.11 -m pip install -e ".[dev]"
 **Same thing with plain `git`:**
 
 ```bash
+mkdir -p ~/Desktop/tracked_logism_lab
+cd ~/Desktop/tracked_logism_lab
 git clone https://github.com/couder-04/circuit-vault.git
 cd circuit-vault
 python3 -m pip install -e ".[dev]"
@@ -229,18 +249,21 @@ If `command not found`: `python3 -m circuit_vault.cli --help` (Windows: `py -3.1
 brew install gh            # or winget install GitHub.cli
 gh auth login
 
+# Desktop → tracked_logism_lab → (tool + lab)
+mkdir -p ~/Desktop/tracked_logism_lab/lab
+cd ~/Desktop/tracked_logism_lab
+
 # install the tool
-cd ~/code_playground
 gh repo clone couder-04/circuit-vault
 cd circuit-vault
 python3 -m pip install -e ".[dev]"
 
-# your lab folder (first machine: mkdir + put .circ; other machine: clone)
-cd ~/Documents
-gh repo clone YOUR_USERNAME/logisim-lab   # if the lab already exists on GitHub
-# or: mkdir -p ~/Documents/logisim-lab && # copy main.circ in
+# your .circ go in lab/ (first machine: copy files in; other machine: clone)
+# gh repo clone YOUR_USERNAME/tracked_logism_lab lab
+# or: copy main.circ into ~/Desktop/tracked_logism_lab/lab/
 
 circuit-vault gui
+# wizard: choose a .circ inside Desktop/tracked_logism_lab/lab/
 ```
 ## 7. Start the GUI
 
@@ -256,10 +279,10 @@ On first launch, **Link GitHub**:
 
 | Field | Value |
 |-------|--------|
-| GitHub repo URL | Lab HTTPS URL from step 2 |
+| GitHub repo URL | **Your** lab HTTPS URL from step 2 (`…/YOUR_USERNAME/tracked_logism_lab.git`) — not the tool repo |
 | Name / Email | Optional — used on commits |
-| Access token | PAT from step 3 |
-| Choose .circ… | File **inside** the project folder from step 4 |
+| Access token | PAT from step 3 (must have write access to **that** lab repo) |
+| Choose .circ… | File **inside** `Desktop/tracked_logism_lab/lab/` |
 
 **OK** runs a test push. Status bar → **☁ Synced** when it works.
 
@@ -300,9 +323,10 @@ Dots refresh every few seconds. Title shows classic vs Evolution for the open fi
 ### Build
 
 - **Target Logisim**: Auto / Evolution / classic (shapes the Claude prompt)
-- Description · component checklist · custom names · inputs / outputs
+- Description · **circuit name** · component checklist · custom gate names · inputs / outputs
 - **Generate Prompt** → **Copy** / **Open Claude**
 - Paste `<circuit>…</circuit>` or **Attach .xml** → validate → **Build & Merge**
+- If the circuit name already exists, a number is added (`Adder` → `Adder1`); success shows e.g. **Component Adder is ready!**
 - Open the result in Logisim / Evolution and check wiring
 
 ### History
@@ -325,9 +349,10 @@ Dots refresh every few seconds. Title shows classic vs Evolution for the open fi
 2. Machine B:
 
 ```bash
-cd ~/Documents
-gh repo clone YOUR_USERNAME/logisim-lab   # first time only
-cd logisim-lab
+mkdir -p ~/Desktop/tracked_logism_lab
+cd ~/Desktop/tracked_logism_lab
+gh repo clone YOUR_USERNAME/tracked_logism_lab lab   # first time only
+cd lab
 git pull                                  # later visits
 circuit-vault gui
 ```
@@ -356,5 +381,64 @@ Dialogs and setup errors include **How to fix** and **How to restart** (`circuit
 - `.circ` in home → move into a dedicated project folder, reopen
 - Token expired → new PAT → **Settings** → paste → **Save & test push**
 - Push failed → check URL/token · **Retry sync**
+
+### Sync failed — *Write access to repository not granted*
+
+GitHub rejected the push. Almost always one of these:
+
+1. **Wrong URL in Settings** — you linked the **tool** repo (`couder-04/circuit-vault`) instead of **your lab** repo  
+2. **Token can’t write** — missing `repo` scope, expired, or for a different account  
+3. **Someone else’s lab** — you cloned a friend’s repo and aren’t a collaborator
+
+**Fix (recommended) — use your own lab:**
+
+```bash
+# 1) Log in as YOU (once per computer)
+gh auth login
+# GitHub.com → HTTPS → Yes → Login with a web browser
+gh auth status    # must show YOUR username
+
+# 2) Create (or reuse) YOUR lab repo — not couder-04/circuit-vault
+gh repo create tracked_logism_lab --private
+# copy the printed URL, e.g. https://github.com/YOUR_USERNAME/tracked_logism_lab.git
+
+# 3) Put your .circ in lab/, then open the GUI
+mkdir -p ~/Desktop/tracked_logism_lab/lab
+# copy/move your .circ into ~/Desktop/tracked_logism_lab/lab/
+circuit-vault gui
+```
+
+In the wizard / **Settings**:
+
+| Field | Must be |
+|-------|---------|
+| GitHub repo URL | `https://github.com/YOUR_USERNAME/tracked_logism_lab.git` |
+| Access token | New classic PAT with **`repo`** checked ([tokens](https://github.com/settings/tokens)) |
+| Choose .circ… | A file inside `Desktop/tracked_logism_lab/lab/` |
+
+Then **Save & test push**.
+
+**Optional — share one lab with a friend** (both can sync to the same repo):
+
+```bash
+# repo owner runs once (replace FRIEND_USERNAME)
+gh api -X PUT repos/YOUR_USERNAME/tracked_logism_lab/collaborators/FRIEND_USERNAME -f permission=push
+```
+
+Friend accepts the invite on GitHub, then uses that same lab URL + **their own** PAT (with access to that repo).
+
+**Check what the GUI is linked to** (from your `.circ` folder):
+
+```bash
+cd ~/Desktop/tracked_logism_lab/lab    # folder that contains your .circ
+git remote -v                          # origin must be YOUR lab, not couder-04/circuit-vault
+```
+
+If `origin` is wrong:
+
+```bash
+git remote set-url origin https://github.com/YOUR_USERNAME/tracked_logism_lab.git
+# then Settings → paste the same URL + PAT → Save & test push
+```
 
 Longer practice / troubleshooting → **[USER_MANUAL.md](USER_MANUAL.md)**.

@@ -626,16 +626,30 @@ class CircuitVaultApp:
         save_session(preferred_format=fmt.value)
         return generate_prompt(description, components, inputs, outputs, fmt)
 
-    def build_merge(self, xml_bytes: bytes, target: str | Path) -> BuildMergeResult:
+    def build_merge(
+        self,
+        xml_bytes: bytes,
+        target: str | Path,
+        *,
+        preferred_name: str = "",
+    ) -> BuildMergeResult:
         target_path = Path(target)
         try:
             target_project = load(target_path)
             fmt = detect_format(target_project)
+            existing = set(list_circuits(target_project))
         except ParseError:
             fmt = self.project_format()
             target_project = None
+            existing = set()
 
-        ok, preview = validate_generated(xml_bytes, target_format=fmt)
+        ok, preview = validate_generated(
+            xml_bytes,
+            target_format=fmt,
+            existing_names=existing,
+            preferred_name=preferred_name.strip() or None,
+            prepare=True,
+        )
         if not ok:
             return BuildMergeResult(
                 ok=False,
@@ -643,16 +657,10 @@ class CircuitVaultApp:
                 preview=preview,
             )
 
-        text = xml_bytes.strip()
-        if text.startswith(b"```"):
-            lines = text.split(b"\n")
-            if lines and lines[0].startswith(b"```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == b"```":
-                lines = lines[:-1]
-            text = b"\n".join(lines).strip()
-
-        name = preview.get("name") or "Built Circuit"
+        text = preview.get("prepared_xml")
+        if not isinstance(text, (bytes, bytearray)):
+            text = xml_bytes
+        name = preview.get("name") or "BuiltCircuit"
         try:
             project = target_project if target_project is not None else load(target_path)
         except ParseError as exc:
@@ -663,18 +671,8 @@ class CircuitVaultApp:
         save_session(last_backup=bak)
 
         try:
-            if name in list_circuits(project):
-                # avoid clash — rename incoming
-                alt = f"{name} (built)"
-                n = 2
-                while alt in list_circuits(project):
-                    alt = f"{name} (built {n})"
-                    n += 1
-                text = rename_circuit_xml(text, alt)
-                name = alt
-                project = insert_circuit(project, text)
-            else:
-                project = insert_circuit(project, text)
+            # Name is Logisim-safe + unique (decimal suffix on clash) from prepare
+            project = insert_circuit(project, text)
 
             vr = validate_project(project)
             if not vr.ok:
@@ -696,7 +694,7 @@ class CircuitVaultApp:
             ok=True,
             name=name,
             backup_path=bak,
-            message=f"Added {name} to {target_path.name}",
+            message=f"Component {name} is ready!",
             preview=preview,
         )
 

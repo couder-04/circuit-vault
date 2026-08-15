@@ -510,6 +510,16 @@ class MainWindow(QMainWindow):
         self.desc.setMaximumHeight(80)
         layout.addWidget(self.desc)
 
+        name_row = QHBoxLayout()
+        name_row.addWidget(QLabel("Circuit name"))
+        self.circuit_name_edit = QLineEdit()
+        self.circuit_name_edit.setPlaceholderText(
+            "e.g. RippleAdder — if taken, a number is added (RippleAdder1)"
+        )
+        self.circuit_name_edit.textChanged.connect(self._validate_paste)
+        name_row.addWidget(self.circuit_name_edit, stretch=1)
+        layout.addLayout(name_row)
+
         fmt_row = QHBoxLayout()
         fmt_row.addWidget(QLabel("Target Logisim"))
         self.build_format = QComboBox()
@@ -649,9 +659,28 @@ class MainWindow(QMainWindow):
     def _validate_paste(self) -> None:
         from circuit_vault.promptgen import validate_generated
 
+        text = self.xml_box.toPlainText().strip()
+        if not text:
+            self.preview_label.setText("")
+            return
+
         fmt = self._selected_build_format()
+        existing: set[str] = set()
+        target = self.build_target.currentText()
+        if target:
+            try:
+                from circuit_vault.parser import list_circuits, load
+
+                existing = set(list_circuits(load(target)))
+            except Exception:  # noqa: BLE001
+                existing = set()
+        preferred = self.circuit_name_edit.text().strip()
         ok, preview = validate_generated(
-            self.xml_box.toPlainText().encode("utf-8"), target_format=fmt
+            text.encode("utf-8"),
+            target_format=fmt,
+            existing_names=existing,
+            preferred_name=preferred or None,
+            prepare=True,
         )
         self._build_preview = preview
         if not ok:
@@ -669,15 +698,20 @@ class MainWindow(QMainWindow):
         if not target:
             QMessageBox.warning(self, "No target", "Open a .circ first.")
             return
+        preferred = self.circuit_name_edit.text().strip()
         result = self.app_core.build_merge(
-            self.xml_box.toPlainText().encode("utf-8"), target
+            self.xml_box.toPlainText().encode("utf-8"),
+            target,
+            preferred_name=preferred,
         )
         if not result.ok:
             QMessageBox.warning(self, "Could not merge", result.message)
         else:
             tip = (result.preview or {}).get("tip") or ""
             QMessageBox.information(
-                self, "Built", result.message + (("\n" + tip) if tip else "")
+                self,
+                "Ready",
+                result.message + (("\n" + tip) if tip else ""),
             )
             self._refresh_file_tab(force=True)
         self._refresh_sync_bar()
