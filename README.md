@@ -56,6 +56,8 @@ flowchart TD
 
 ## 2. Empty lab repository
 
+**Option A — browser**
+
 1. GitHub → **+** → **New repository**
 2. Name it (e.g. `logisim-lab`) · Public or Private
 3. Leave README / .gitignore / license **unchecked** (empty is easiest)
@@ -63,9 +65,21 @@ flowchart TD
 
    `https://github.com/YOUR_USERNAME/logisim-lab.git`
 
-This is the **lab** backup repo (your `.circ` + finals). Separate from the Circuit Vault **tool** repo you clone later.
+**Option B — GitHub CLI** (after you finish [§5a](#5a-install-and-log-in-with-github-cli-gh) below):
 
-## 3. Personal Access Token (PAT)
+```bash
+gh repo create logisim-lab --private
+# prints the repo URL — copy it for the Circuit Vault setup wizard
+# later: gh repo clone YOUR_USERNAME/logisim-lab
+```
+
+Add `--public` instead of `--private` if you prefer a public lab repo.
+
+This is the **lab** backup repo (your `.circ` + finals). Separate from the Circuit Vault **tool** repo ([couder-04/circuit-vault](https://github.com/couder-04/circuit-vault)) you clone later.
+
+Circuit Vault’s GUI still needs a PAT for auto-sync (stored in Keychain / Credential Manager).
+
+**If you use `gh auth login`**, you can often create a token from the CLI later, but the simplest first-time path is still the website:
 
 GitHub → profile → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**  
 → [https://github.com/settings/tokens](https://github.com/settings/tokens)
@@ -75,7 +89,7 @@ GitHub → profile → **Settings** → **Developer settings** → **Personal ac
 3. Generate → copy `ghp_…` **immediately** (shown once)
 
 Fine-grained also works with **Contents: Read and write** on that one lab repo.  
-Token is stored in the OS credential store (Keychain / Credential Manager / Secret Service) — never commit it.
+Token is stored in the OS credential store — never commit it.
 
 ## 4. Local project folder (required)
 
@@ -99,7 +113,8 @@ mkdir $HOME\Documents\logisim-lab
 
 ```bash
 cd ~/Documents
-git clone https://github.com/YOUR_USERNAME/logisim-lab.git
+gh repo clone YOUR_USERNAME/logisim-lab
+# same as: git clone https://github.com/YOUR_USERNAME/logisim-lab.git
 cd logisim-lab
 # expect: *.circ  and usually circuit-vault/
 ```
@@ -118,27 +133,65 @@ Classic and Evolution both use `.circ`; Circuit Vault detects which.
 
 ## 5. Prerequisites on this computer
 
-Python **3.11+** and **Git** on PATH:
+Python **3.11+**, **Git**, and (recommended) **GitHub CLI (`gh`)** on PATH:
 
 ```bash
 python3 --version    # Windows: py -3.11 --version
 git --version
+gh --version         # optional but recommended
 ```
 
 | OS | If missing |
 |----|------------|
-| macOS | `brew install python@3.11 git` |
-| Windows | [python.org](https://www.python.org/downloads/) + [Git for Windows](https://git-scm.com/download/win) |
-| Linux | `sudo apt install python3 python3-pip python3-venv git` |
+| macOS | `brew install python@3.11 git gh` |
+| Windows | [python.org](https://www.python.org/downloads/) + [Git for Windows](https://git-scm.com/download/win) + `winget install GitHub.cli` |
+| Linux | `sudo apt install python3 python3-pip python3-venv git` then [install `gh`](https://github.com/cli/cli#installation) |
+
+### 5a. Install and log in with GitHub CLI (`gh`)
+
+Do this once per computer. It makes clone / create / pull much easier.
+
+```bash
+# Install (pick your OS)
+brew install gh                          # macOS
+winget install GitHub.cli                # Windows
+# Linux: see https://github.com/cli/cli#installation
+
+# Log in (browser is easiest for newbies)
+gh auth login
+```
+
+When prompted, typical newbie choices:
+
+1. **GitHub.com**
+2. **HTTPS**
+3. Authenticate Git with GitHub credentials? **Yes**
+4. Login method: **Login with a web browser**
+5. Copy the one-time code → press Enter → paste/approve in the browser
+
+Check:
+
+```bash
+gh auth status
+```
+
+Useful follow-ups:
+
+```bash
+gh auth refresh -s repo    # if a command asks for more permissions
+gh repo list               # see your repos
+```
 
 ## 6. Install the Circuit Vault tool
 
-Clone the **tool** repo (not the lab repo), then install editable:
+Clone the **tool** repo (not the lab repo), then install editable.
+
+**Recommended (`gh`):**
 
 ```bash
 # macOS / Linux
 cd ~/code_playground          # any folder you like
-git clone https://github.com/couder-04/circuit-vault.git
+gh repo clone couder-04/circuit-vault
 cd circuit-vault
 python3 -m pip install -e ".[dev]"
 ```
@@ -146,9 +199,17 @@ python3 -m pip install -e ".[dev]"
 ```powershell
 # Windows
 cd $HOME\code_playground
-git clone https://github.com/couder-04/circuit-vault.git
+gh repo clone couder-04/circuit-vault
 cd circuit-vault
 py -3.11 -m pip install -e ".[dev]"
+```
+
+**Same thing with plain `git`:**
+
+```bash
+git clone https://github.com/couder-04/circuit-vault.git
+cd circuit-vault
+python3 -m pip install -e ".[dev]"
 ```
 
 Or copy the whole tool folder via USB/cloud, `cd` into it, then the same `pip install -e ".[dev]"`.
@@ -161,6 +222,26 @@ circuit-vault --help
 
 If `command not found`: `python3 -m circuit_vault.cli --help` (Windows: `py -3.11 -m circuit_vault.cli --help`).
 
+### Quick command block (tool + lab with `gh`)
+
+```bash
+# once per Mac/PC
+brew install gh            # or winget install GitHub.cli
+gh auth login
+
+# install the tool
+cd ~/code_playground
+gh repo clone couder-04/circuit-vault
+cd circuit-vault
+python3 -m pip install -e ".[dev]"
+
+# your lab folder (first machine: mkdir + put .circ; other machine: clone)
+cd ~/Documents
+gh repo clone YOUR_USERNAME/logisim-lab   # if the lab already exists on GitHub
+# or: mkdir -p ~/Documents/logisim-lab && # copy main.circ in
+
+circuit-vault gui
+```
 ## 7. Start the GUI
 
 ```bash
@@ -241,8 +322,17 @@ Dots refresh every few seconds. Title shows classic vs Evolution for the open fi
 ## Two computers
 
 1. Machine A: work until **☁ Synced**
-2. Machine B: `cd` into the lab folder → `git pull` → `circuit-vault gui` → open the same `.circ`
-3. Before switching again: wait for sync, then `git pull` on the other side
+2. Machine B:
+
+```bash
+cd ~/Documents
+gh repo clone YOUR_USERNAME/logisim-lab   # first time only
+cd logisim-lab
+git pull                                  # later visits
+circuit-vault gui
+```
+
+3. Before switching again: wait for sync, then `git pull` (or `gh repo sync`) on the other side
 
 Do not edit the same circuit on both machines offline without pulling — git conflicts.
 
