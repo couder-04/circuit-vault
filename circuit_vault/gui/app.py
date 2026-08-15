@@ -623,6 +623,26 @@ class MainWindow(QMainWindow):
         self.build_target = QComboBox()
         brow.addWidget(self.build_target, stretch=1)
         layout.addLayout(brow)
+        self.allow_underwired_cb = QCheckBox(
+            "Allow merge with incomplete wiring (I will finish wires in Logisim)"
+        )
+        self.allow_underwired_cb.setToolTip(
+            "Use when Claude placed the blocks but wiring is incomplete. "
+            "The circuit will open in Logisim so you can draw the remaining wires. "
+            "Do not use this if you expect a fully working circuit immediately."
+        )
+        self.allow_underwired_cb.stateChanged.connect(self._on_allow_underwired_changed)
+        layout.addWidget(self.allow_underwired_cb)
+        self.underwired_disclaimer = QLabel(
+            "DISCLAIMER: Connections may not be perfect. "
+            "Kindly cross-confirm in Logisim and fill any remaining wires before relying on this circuit."
+        )
+        self.underwired_disclaimer.setWordWrap(True)
+        self.underwired_disclaimer.setStyleSheet(
+            "color:#c62828; font-weight:700; font-size:13px; padding:4px 0;"
+        )
+        self.underwired_disclaimer.setVisible(False)
+        layout.addWidget(self.underwired_disclaimer)
         build_btn = QPushButton("Build & Merge")
         build_btn.clicked.connect(self._do_build_merge)
         layout.addWidget(build_btn)
@@ -742,6 +762,20 @@ class MainWindow(QMainWindow):
         )
         self.prompt_box.setPlainText(prompt)
 
+    def _on_allow_underwired_changed(self) -> None:
+        checked = bool(self.allow_underwired_cb.isChecked())
+        if getattr(self, "underwired_disclaimer", None):
+            self.underwired_disclaimer.setVisible(checked)
+        self._validate_paste()
+
+    def _set_preview_style(self, *, underwired_ok: bool = False, error: bool = False) -> None:
+        if error:
+            self.preview_label.setStyleSheet("color:#c62828; font-weight:600;")
+        elif underwired_ok:
+            self.preview_label.setStyleSheet("color:#c62828; font-weight:700;")
+        else:
+            self.preview_label.setStyleSheet("")
+
     def _attach_xml(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Circuit XML", str(Path.home()), "XML (*.xml);;All (*)"
@@ -756,6 +790,7 @@ class MainWindow(QMainWindow):
         text = self.xml_box.toPlainText().strip()
         if not text:
             self.preview_label.setText("")
+            self._set_preview_style()
             return
 
         fmt = self._selected_build_format()
@@ -769,6 +804,10 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001
                 existing = set()
         preferred = self.circuit_name_edit.text().strip()
+        allow_uw = bool(
+            getattr(self, "allow_underwired_cb", None)
+            and self.allow_underwired_cb.isChecked()
+        )
         try:
             ok, preview = validate_generated(
                 text.encode("utf-8"),
@@ -776,14 +815,17 @@ class MainWindow(QMainWindow):
                 existing_names=existing,
                 preferred_name=preferred or None,
                 prepare=True,
+                allow_underwired=allow_uw,
             )
         except Exception as exc:  # noqa: BLE001
+            self._set_preview_style(error=True)
             self.preview_label.setText(f"Could not process XML: {exc}")
             self._build_preview = {"error": str(exc)}
             return
         self._build_preview = preview
         if not ok:
             err = str(preview.get("error") or "invalid XML")
+            self._set_preview_style(error=True)
             self.preview_label.setText(f"Not valid yet: {err}")
             fix = preview.get("fix_prompt")
             if isinstance(fix, str) and fix.strip():
@@ -795,6 +837,8 @@ class MainWindow(QMainWindow):
                 )
             return
         tip = preview.get("tip") or ""
+        underwired_ok = bool(preview.get("underwired") and allow_uw)
+        self._set_preview_style(underwired_ok=underwired_ok)
         self.preview_label.setText(
             f"{preview.get('name')}: {preview.get('input_count')} in, "
             f"{preview.get('output_count')} out, {preview.get('component_count')} parts. {tip}"
@@ -840,10 +884,15 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No target", "Open a .circ first.")
             return
         preferred = self.circuit_name_edit.text().strip()
+        allow_uw = bool(
+            getattr(self, "allow_underwired_cb", None)
+            and self.allow_underwired_cb.isChecked()
+        )
         result = self.app_core.build_merge(
             self.xml_box.toPlainText().encode("utf-8"),
             target,
             preferred_name=preferred,
+            allow_underwired=allow_uw,
         )
         if not result.ok:
             preview = result.preview or {}
@@ -860,11 +909,25 @@ class MainWindow(QMainWindow):
                 box.exec()
         else:
             tip = (result.preview or {}).get("tip") or ""
-            QMessageBox.information(
-                self,
-                "Ready",
-                result.message + (("\n" + tip) if tip else ""),
-            )
+            underwired = bool((result.preview or {}).get("underwired") and allow_uw)
+            if underwired:
+                box = QMessageBox(self)
+                box.setIcon(QMessageBox.Icon.Warning)
+                box.setWindowTitle("Merged — check wiring")
+                box.setText(result.message)
+                box.setInformativeText(
+                    (tip + "\n\n" if tip else "")
+                    + "DISCLAIMER: Connections may not be perfect. "
+                    "Kindly cross-confirm in Logisim and fill any remaining wires "
+                    "before relying on this circuit."
+                )
+                box.exec()
+            else:
+                QMessageBox.information(
+                    self,
+                    "Ready",
+                    result.message + (("\n" + tip) if tip else ""),
+                )
             self._refresh_file_tab(force=True)
         self._refresh_sync_bar()
 

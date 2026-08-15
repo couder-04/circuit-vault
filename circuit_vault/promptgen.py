@@ -551,6 +551,7 @@ def validate_generated(
     existing_names: set[str] | None = None,
     preferred_name: str | None = None,
     prepare: bool = True,
+    allow_underwired: bool = False,
 ) -> tuple[bool, dict]:
     """
     Validate generated circuit XML.
@@ -558,6 +559,9 @@ def validate_generated(
     When *prepare* is True (default), snaps geometry to the grid, splits diagonal
     wires, and assigns a Logisim-safe unique name (decimal suffix on clash)
     before checks. *preferred_name* overrides the XML circuit name when set.
+
+    If *allow_underwired* is True, incomplete wiring is reported as a tip instead
+    of a hard error (user plans to finish wires in Logisim).
 
     Returns (ok, preview) where preview has name, input_count, output_count,
     component_count, tip (optional), prepared_xml (bytes when prepare ran).
@@ -672,19 +676,27 @@ def validate_generated(
     preview["wire_count"] = stats["wire_count"]
     preview["connectivity"] = stats["summary"]
     if stats["underwired"]:
-        preview["error"] = (
-            "This XML places components but does not wire them enough "
-            f"({stats['summary']}).\n\n"
-            'Click "Copy fix prompt" (also filled into Step 2) so Claude adds all '
-            "missing wires, then paste the new XML and Build & Merge again."
-        )
+        preview["underwired"] = True
         preview["fix_prompt"] = generate_wiring_fix_prompt(
             circuit_name=preview.get("name") or "circuit",
             broken_xml=text.decode("utf-8", errors="replace"),
             stats_summary=stats["summary"],
         )
-        preview["underwired"] = True
-        return False, preview
+        if allow_underwired:
+            preview["tip"] = (
+                f"Incomplete wiring allowed ({stats['summary']}). "
+                "DISCLAIMER: Connections may not be perfect — "
+                "cross-confirm in Logisim and fill any remaining wires."
+            )
+        else:
+            preview["error"] = (
+                "This XML places components but does not wire them enough "
+                f"({stats['summary']}).\n\n"
+                'Option A: Click "Copy fix prompt" → Claude → paste better XML.\n'
+                "Option B: Check “Allow merge with incomplete wiring” and finish "
+                "wires yourself in Logisim."
+            )
+            return False, preview
 
     wrapped = wrap_circuit_as_project(text, fmt)
     from circuit_vault.repair import validate_file_bytes
