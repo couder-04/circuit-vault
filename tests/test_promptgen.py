@@ -170,6 +170,22 @@ def test_and_gate_port_offsets():
     assert (150, 140) in ports  # input 1
 
 
+def test_comments_in_xml_do_not_crash_prepare():
+    xml = (
+        b'<circuit name="Demo">'
+        b"<!-- section header -->"
+        b'<comp lib="0" loc="(80,100)" name="Pin">'
+        b'<a name="facing" val="east"/>'
+        b"</comp>"
+        b'<wire from="(80,100)" to="(120,100)"/>'
+        b"</circuit>"
+    )
+    out, name, notes = prepare_generated_circuit(xml)
+    assert b"<!--" not in out
+    assert name[0].isalpha()
+    assert is_valid_logisim_circuit_name(name)
+
+
 def test_validate_generated_accepts_good_and_rejects_junk():
     project = load(MAIN)
     good = extract_circuit_raw_bytes(project, "Half Adder")

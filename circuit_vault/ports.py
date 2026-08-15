@@ -29,8 +29,14 @@ _XOR_FAMILY = {"XOR Gate", "XNOR Gate"}
 _NOT_FAMILY = {"NOT Gate", "Buffer"}
 
 
-def _local(el: etree._Element) -> str:
-    return etree.QName(el).localname
+def _local(el: object) -> str:
+    """Return element localname, or \"\" for comments / non-elements."""
+    tag = getattr(el, "tag", None)
+    if not isinstance(tag, str):
+        return ""
+    if "}" in tag:
+        return tag.rsplit("}", 1)[-1]
+    return tag
 
 
 def _parse_coord(val: str | None) -> tuple[int, int] | None:
@@ -49,8 +55,11 @@ def _fmt(x: int, y: int) -> str:
 def _attr_map(comp: etree._Element) -> dict[str, str]:
     out: dict[str, str] = {}
     for child in comp:
-        if _local(child) == "a" and child.get("name"):
-            out[child.get("name") or ""] = child.get("val") or ""
+        if _local(child) != "a":
+            continue
+        name = child.get("name")
+        if name:
+            out[name] = child.get("val") or ""
     return out
 
 
@@ -163,9 +172,7 @@ def ports_for_component(comp: etree._Element) -> list[tuple[int, int]]:
 
 def collect_ports(circuit_el: etree._Element) -> set[tuple[int, int]]:
     ports: set[tuple[int, int]] = set()
-    for comp in circuit_el.iter():
-        if _local(comp) != "comp":
-            continue
+    for comp in circuit_el.iter("comp"):
         ports.update(ports_for_component(comp))
     return ports
 
@@ -209,7 +216,7 @@ def snap_wires_to_ports(
     if not ports:
         return notes
 
-    wires = [w for w in circuit_el.iter() if _local(w) == "wire"]
+    wires = list(circuit_el.iter("wire"))
     if not wires:
         return notes
 
@@ -227,11 +234,6 @@ def snap_wires_to_ports(
                 snapped += 1
             ends.append((wire, attr, pt))
 
-    end_points = [pt for _, _, pt in ends]
-    counts: dict[tuple[int, int], int] = {}
-    for pt in end_points:
-        counts[pt] = counts.get(pt, 0) + 1
-
     # Refresh ends after soft snap for pass 2
     ends = []
     for wire in wires:
@@ -241,7 +243,7 @@ def snap_wires_to_ports(
             pt = _parse_coord(wire.get(attr))
             if pt is not None:
                 ends.append((wire, attr, pt))
-    counts = {}
+    counts: dict[tuple[int, int], int] = {}
     for _, _, pt in ends:
         counts[pt] = counts.get(pt, 0) + 1
 
@@ -262,9 +264,7 @@ def snap_wires_to_ports(
         notes.append(f"extended {extended} floating wire end(s) to nearest ports")
 
     split = 0
-    for wire in list(circuit_el.iter()):
-        if _local(wire) != "wire":
-            continue
+    for wire in list(circuit_el.iter("wire")):
         a = _parse_coord(wire.get("from"))
         b = _parse_coord(wire.get("to"))
         if a is None or b is None:

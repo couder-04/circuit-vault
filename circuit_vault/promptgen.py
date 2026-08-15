@@ -215,8 +215,19 @@ def _snap_pair(x: int, y: int, grid: int = _GRID) -> tuple[int, int]:
     return _snap(x, grid), _snap(y, grid)
 
 
-def _local(el: etree._Element) -> str:
-    return etree.QName(el).localname
+def _local(el: object) -> str:
+    """Return element localname, or \"\" for comments / non-elements."""
+    tag = getattr(el, "tag", None)
+    if not isinstance(tag, str):
+        return ""
+    if "}" in tag:
+        return tag.rsplit("}", 1)[-1]
+    return tag
+
+
+def _strip_xml_comments(xml_bytes: bytes) -> bytes:
+    """Remove <!-- ... --> so Logisim paste and our walkers stay safe."""
+    return re.sub(br"<!--.*?-->", b"", xml_bytes, flags=re.DOTALL)
 
 
 def normalize_circuit_geometry(el: etree._Element) -> list[str]:
@@ -231,9 +242,7 @@ def normalize_circuit_geometry(el: etree._Element) -> list[str]:
 
     notes: list[str] = []
     snapped_comps = 0
-    for comp in el.iter():
-        if _local(comp) != "comp":
-            continue
+    for comp in el.iter("comp"):
         loc = _parse_coord(comp.get("loc"))
         if loc is None:
             continue
@@ -244,7 +253,7 @@ def normalize_circuit_geometry(el: etree._Element) -> list[str]:
     if snapped_comps:
         notes.append(f"snapped {snapped_comps} component(s) to {_GRID}-unit grid")
 
-    wires = [w for w in el.iter() if _local(w) == "wire"]
+    wires = list(el.iter("wire"))
     split = 0
     snapped_wires = 0
     for wire in wires:
@@ -292,7 +301,7 @@ def _strip_fences(xml_bytes: bytes) -> bytes:
         if lines and lines[-1].strip() == b"```":
             lines = lines[:-1]
         text = b"\n".join(lines).strip()
-    return text
+    return _strip_xml_comments(text)
 
 
 def prepare_generated_circuit(
@@ -455,7 +464,7 @@ def validate_generated(
         preview["error"] = str(exc)
         return False, preview
 
-    if etree.QName(el).localname != "circuit":
+    if _local(el) != "circuit":
         preview["error"] = "Root element must be <circuit>"
         return False, preview
 
@@ -477,8 +486,8 @@ def validate_generated(
         )
         return False, preview
 
-    comps = [c for c in el.iter() if etree.QName(c).localname == "comp"]
-    wires = [w for w in el.iter() if etree.QName(w).localname == "wire"]
+    comps = list(el.iter("comp"))
+    wires = list(el.iter("wire"))
     preview["component_count"] = len(comps)
     inputs = 0
     outputs = 0
@@ -487,7 +496,7 @@ def validate_generated(
             continue
         is_out = False
         for a in c:
-            if etree.QName(a).localname == "a" and a.get("name") == "output":
+            if _local(a) == "a" and a.get("name") == "output":
                 if (a.get("val") or "").lower() == "true":
                     is_out = True
         if is_out:

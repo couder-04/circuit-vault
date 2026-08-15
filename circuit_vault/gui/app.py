@@ -675,13 +675,18 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001
                 existing = set()
         preferred = self.circuit_name_edit.text().strip()
-        ok, preview = validate_generated(
-            text.encode("utf-8"),
-            target_format=fmt,
-            existing_names=existing,
-            preferred_name=preferred or None,
-            prepare=True,
-        )
+        try:
+            ok, preview = validate_generated(
+                text.encode("utf-8"),
+                target_format=fmt,
+                existing_names=existing,
+                preferred_name=preferred or None,
+                prepare=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.preview_label.setText(f"Could not process XML: {exc}")
+            self._build_preview = {"error": str(exc)}
+            return
         self._build_preview = preview
         if not ok:
             self.preview_label.setText(f"Not valid yet: {preview.get('error')}")
