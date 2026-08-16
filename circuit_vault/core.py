@@ -634,7 +634,7 @@ class CircuitVaultApp:
         target: str | Path,
         *,
         preferred_name: str = "",
-        allow_underwired: bool = False,
+        allow_underwired: bool = True,
     ) -> BuildMergeResult:
         target_path = Path(target)
         try:

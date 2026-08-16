@@ -623,16 +623,6 @@ class MainWindow(QMainWindow):
         self.build_target = QComboBox()
         brow.addWidget(self.build_target, stretch=1)
         layout.addLayout(brow)
-        self.allow_underwired_cb = QCheckBox(
-            "Allow merge with incomplete wiring (I will finish wires in Logisim)"
-        )
-        self.allow_underwired_cb.setToolTip(
-            "Use when Claude placed the blocks but wiring is incomplete. "
-            "The circuit will open in Logisim so you can draw the remaining wires. "
-            "Do not use this if you expect a fully working circuit immediately."
-        )
-        self.allow_underwired_cb.stateChanged.connect(self._on_allow_underwired_changed)
-        layout.addWidget(self.allow_underwired_cb)
         self.underwired_disclaimer = QLabel(
             "DISCLAIMER: Connections may not be perfect. "
             "Kindly cross-confirm in Logisim and fill any remaining wires before relying on this circuit."
@@ -762,12 +752,6 @@ class MainWindow(QMainWindow):
         )
         self.prompt_box.setPlainText(prompt)
 
-    def _on_allow_underwired_changed(self) -> None:
-        checked = bool(self.allow_underwired_cb.isChecked())
-        if getattr(self, "underwired_disclaimer", None):
-            self.underwired_disclaimer.setVisible(checked)
-        self._validate_paste()
-
     def _set_preview_style(self, *, underwired_ok: bool = False, error: bool = False) -> None:
         if error:
             self.preview_label.setStyleSheet("color:#c62828; font-weight:600;")
@@ -775,6 +759,10 @@ class MainWindow(QMainWindow):
             self.preview_label.setStyleSheet("color:#c62828; font-weight:700;")
         else:
             self.preview_label.setStyleSheet("")
+
+    def _show_underwired_disclaimer(self, show: bool) -> None:
+        if getattr(self, "underwired_disclaimer", None):
+            self.underwired_disclaimer.setVisible(bool(show))
 
     def _attach_xml(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -791,6 +779,7 @@ class MainWindow(QMainWindow):
         if not text:
             self.preview_label.setText("")
             self._set_preview_style()
+            self._show_underwired_disclaimer(False)
             return
 
         fmt = self._selected_build_format()
@@ -804,10 +793,6 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001
                 existing = set()
         preferred = self.circuit_name_edit.text().strip()
-        allow_uw = bool(
-            getattr(self, "allow_underwired_cb", None)
-            and self.allow_underwired_cb.isChecked()
-        )
         try:
             ok, preview = validate_generated(
                 text.encode("utf-8"),
@@ -815,10 +800,11 @@ class MainWindow(QMainWindow):
                 existing_names=existing,
                 preferred_name=preferred or None,
                 prepare=True,
-                allow_underwired=allow_uw,
+                allow_underwired=True,
             )
         except Exception as exc:  # noqa: BLE001
             self._set_preview_style(error=True)
+            self._show_underwired_disclaimer(False)
             self.preview_label.setText(f"Could not process XML: {exc}")
             self._build_preview = {"error": str(exc)}
             return
@@ -826,9 +812,10 @@ class MainWindow(QMainWindow):
         if not ok:
             err = str(preview.get("error") or "invalid XML")
             self._set_preview_style(error=True)
+            self._show_underwired_disclaimer(False)
             self.preview_label.setText(f"Not valid yet: {err}")
             fix = preview.get("fix_prompt")
-            if isinstance(fix, str) and fix.strip():
+            if isinstance(fix, str) and fix.strip() and preview.get("missing_subcircuits"):
                 self.prompt_box.setPlainText(fix)
                 self.preview_label.setText(
                     err
@@ -837,8 +824,9 @@ class MainWindow(QMainWindow):
                 )
             return
         tip = preview.get("tip") or ""
-        underwired_ok = bool(preview.get("underwired") and allow_uw)
-        self._set_preview_style(underwired_ok=underwired_ok)
+        underwired = bool(preview.get("underwired"))
+        self._set_preview_style(underwired_ok=underwired)
+        self._show_underwired_disclaimer(underwired)
         self.preview_label.setText(
             f"{preview.get('name')}: {preview.get('input_count')} in, "
             f"{preview.get('output_count')} out, {preview.get('component_count')} parts. {tip}"
@@ -884,20 +872,18 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No target", "Open a .circ first.")
             return
         preferred = self.circuit_name_edit.text().strip()
-        allow_uw = bool(
-            getattr(self, "allow_underwired_cb", None)
-            and self.allow_underwired_cb.isChecked()
-        )
         result = self.app_core.build_merge(
             self.xml_box.toPlainText().encode("utf-8"),
             target,
             preferred_name=preferred,
-            allow_underwired=allow_uw,
+            allow_underwired=True,
         )
         if not result.ok:
             preview = result.preview or {}
-            if preview.get("fix_prompt") or preview.get("missing_subcircuits") or preview.get(
-                "underwired"
+            # Incomplete wiring no longer blocks merge; only missing subcircuits
+            # (and real XML errors) use the Claude fix-prompt dialog.
+            if preview.get("missing_subcircuits") or (
+                preview.get("fix_prompt") and not preview.get("underwired")
             ):
                 self._offer_missing_fix_prompt(result.message, preview)
             else:
@@ -909,7 +895,7 @@ class MainWindow(QMainWindow):
                 box.exec()
         else:
             tip = (result.preview or {}).get("tip") or ""
-            underwired = bool((result.preview or {}).get("underwired") and allow_uw)
+            underwired = bool((result.preview or {}).get("underwired"))
             if underwired:
                 box = QMessageBox(self)
                 box.setIcon(QMessageBox.Icon.Warning)

@@ -551,7 +551,7 @@ def validate_generated(
     existing_names: set[str] | None = None,
     preferred_name: str | None = None,
     prepare: bool = True,
-    allow_underwired: bool = False,
+    allow_underwired: bool = True,
 ) -> tuple[bool, dict]:
     """
     Validate generated circuit XML.
@@ -560,8 +560,8 @@ def validate_generated(
     wires, and assigns a Logisim-safe unique name (decimal suffix on clash)
     before checks. *preferred_name* overrides the XML circuit name when set.
 
-    If *allow_underwired* is True, incomplete wiring is reported as a tip instead
-    of a hard error (user plans to finish wires in Logisim).
+    Incomplete wiring is allowed by default (*allow_underwired*=True) and reported
+    as a disclaimer tip so merge can proceed; set False to reject underwired XML.
 
     Returns (ok, preview) where preview has name, input_count, output_count,
     component_count, tip (optional), prepared_xml (bytes when prepare ran).
@@ -684,17 +684,14 @@ def validate_generated(
         )
         if allow_underwired:
             preview["tip"] = (
-                f"Incomplete wiring allowed ({stats['summary']}). "
+                f"Incomplete wiring ({stats['summary']}). "
                 "DISCLAIMER: Connections may not be perfect — "
                 "cross-confirm in Logisim and fill any remaining wires."
             )
         else:
             preview["error"] = (
                 "This XML places components but does not wire them enough "
-                f"({stats['summary']}).\n\n"
-                'Option A: Click "Copy fix prompt" → Claude → paste better XML.\n'
-                "Option B: Check “Allow merge with incomplete wiring” and finish "
-                "wires yourself in Logisim."
+                f"({stats['summary']})."
             )
             return False, preview
 
