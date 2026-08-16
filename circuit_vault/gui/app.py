@@ -287,6 +287,14 @@ class MainWindow(QMainWindow):
         self.open_btn = QPushButton("Open .circ")
         self.open_btn.clicked.connect(self._choose_file)
         layout.addWidget(self.open_btn)
+        self.fix_libs_btn = QPushButton("Fix “library not found” (lib=13)")
+        self.fix_libs_btn.setToolTip(
+            "Logisim Evolution sometimes saves subcircuits as lib=13 without defining "
+            "that library. This rewrites them as same-file circuits. "
+            "Quit Logisim first, then reopen the file after."
+        )
+        self.fix_libs_btn.clicked.connect(self._fix_orphan_libs)
+        layout.addWidget(self.fix_libs_btn)
         self.list_host = QWidget()
         self.list_layout = QVBoxLayout(self.list_host)
         self.list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -302,6 +310,20 @@ class MainWindow(QMainWindow):
         self.toast.hide()
         layout.addWidget(self.toast)
         return w
+
+    def _fix_orphan_libs(self) -> None:
+        if self.app_core.circ_path is None:
+            QMessageBox.warning(self, "No file", "Open a .circ first.")
+            return
+        from circuit_vault.importer import repair_orphan_libs_file
+
+        ok, message = repair_orphan_libs_file(self.app_core.circ_path)
+        if not ok:
+            QMessageBox.warning(self, "Could not fix", message)
+            return
+        self.app_core.reload()
+        self._refresh_file_tab(force=True)
+        QMessageBox.information(self, "Library refs", message)
 
     def _choose_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

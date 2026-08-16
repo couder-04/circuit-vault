@@ -323,6 +323,7 @@ def merge(
     skipped: list[str] = []
     renamed: dict[str, str] = {}
     project = target
+    lib_notes: list[str] = []
 
     try:
         for name in ordered:
@@ -368,6 +369,11 @@ def merge(
             merged.append(final_name)
             target_names.add(final_name)
 
+        # Whole-project pass: Evolution often writes lib="13" (etc.) for same-file
+        # subcircuits without a matching <lib> entry. Strip those so Logisim does
+        # not report "library '13' not found" and drop the blocks.
+        project, lib_notes = repair_orphan_project_libs(project)
+
         vr = validate_project(project)
         if not vr.ok:
             return MergeResult(
@@ -388,12 +394,15 @@ def merge(
     )
     if pulled:
         msg += f" Also brought {len(pulled)} dependenc{'y' if len(pulled)==1 else 'ies'} from the source file."
+    if lib_notes:
+        msg += " Fixed orphan library refs (lib=13 etc.) so Logisim can resolve subcircuits."
     if unresolved:
         msg += (
             " Warning: missing in source: "
             + ", ".join(sorted(set(unresolved)))
             + " — open Logisim may drop those blocks."
         )
+    msg += " Quit Logisim before merge and reopen the file after — do not Save from an already-open Logisim window or it can overwrite this fix."
     if format_warning:
         msg = f"{msg} {format_warning}"
 
@@ -424,6 +433,45 @@ def _declared_lib_ids(project) -> set[str]:
     return ids
 
 
+def repair_orphan_project_libs(project):
+    """
+    Strip undeclared ``lib=`` on same-project subcircuit instances in every circuit.
+
+    Returns (project, notes).
+    """
+    names = set(list_circuits(project))
+    declared = _declared_lib_ids(project)
+    notes: list[str] = []
+    for name in list_circuits(project):
+        xml = extract_circuit_raw_bytes(project, name)
+        fixed, n = _normalize_project_subcircuit_refs(
+            xml, names, declared_libs=declared
+        )
+        if not n:
+            continue
+        project = splice(project, name, fixed)
+        notes.extend(f"{name}: {x}" for x in n)
+    return project, notes
+
+
+def repair_orphan_libs_file(path: str | Path) -> tuple[bool, str]:
+    """Fix orphan lib= refs on disk. Returns (ok, message)."""
+    path = Path(path)
+    try:
+        project = load(path)
+    except ParseError as exc:
+        return False, str(exc)
+    bak = backup(path)
+    project, notes = repair_orphan_project_libs(project)
+    if not notes:
+        return True, "No orphan library refs found."
+    path.write_bytes(project.raw_bytes)
+    return True, (
+        f"Fixed {len(notes)} circuit(s); backup at {bak.name}. "
+        "Quit Logisim and reopen this file (do not Save from an old window)."
+    )
+
+
 def _normalize_project_subcircuit_refs(
     xml_bytes: bytes,
     circuit_names: set[str],
@@ -435,7 +483,7 @@ def _normalize_project_subcircuit_refs(
 
     Logisim Evolution may tag same-project subcircuits with lib=\"10\"+ without
     writing a matching ``<lib>`` entry. Those survive in the original file but
-    drop out after merge into another .circ.
+    drop out after merge into another .circ / show “library N not found”.
     """
     notes: list[str] = []
     try:
