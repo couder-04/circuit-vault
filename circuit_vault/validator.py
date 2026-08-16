@@ -109,14 +109,18 @@ def is_subcircuit_instance(comp: etree._Element, circuit_names: set[str]) -> str
     """
     Return referenced circuit name if this <comp> is a subcircuit instance.
 
-    Built-in components carry lib="N". Subcircuit instances have no lib (or empty
-    lib). A dangling name with no lib is still treated as a subcircuit reference.
+    Built-in components carry lib="N" for Wiring/Gates/…. Same-project
+    subcircuits are usually written with no lib; Logisim Evolution sometimes
+    writes lib="10"+ without a matching <lib> entry — if ``name`` matches a
+    circuit in this project, treat it as a subcircuit either way.
     """
     if _local(comp) != "comp":
         return None
     comp_name = comp.get("name")
     if not comp_name:
         return None
+    if comp_name in circuit_names:
+        return comp_name
     lib = comp.get("lib")
     if lib is not None and str(lib).strip() != "":
         return None

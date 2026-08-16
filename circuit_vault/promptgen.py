@@ -230,7 +230,12 @@ def _strip_xml_comments(xml_bytes: bytes) -> bytes:
     return re.sub(br"<!--.*?-->", b"", xml_bytes, flags=re.DOTALL)
 
 
-def normalize_circuit_geometry(el: etree._Element) -> list[str]:
+def normalize_circuit_geometry(
+    el: etree._Element,
+    *,
+    subcircuit_pins: dict | None = None,
+    subcircuit_meta: dict | None = None,
+) -> list[str]:
     """
     Snap component/wire coordinates to the Logisim 10-unit grid, replace
     diagonal wires with Manhattan segments, then snap floating ends onto
@@ -288,7 +293,13 @@ def normalize_circuit_geometry(el: etree._Element) -> list[str]:
     if split:
         notes.append(f"split {split} diagonal wire(s) into axis-aligned segments")
 
-    notes.extend(snap_wires_to_ports(el))
+    notes.extend(
+        snap_wires_to_ports(
+            el,
+            subcircuit_pins=subcircuit_pins,
+            subcircuit_meta=subcircuit_meta,
+        )
+    )
     return notes
 
 

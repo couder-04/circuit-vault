@@ -9,9 +9,11 @@ from circuit_vault.dependencies import build_graph
 from circuit_vault.formats import detect_format, format_label
 from circuit_vault.parser import (
     ParseError,
+    circuit_to_xml_bytes,
     extract_circuit_raw_bytes,
     list_circuits,
     load,
+    parse_circuit_bytes,
     rename_circuit_xml,
 )
 from circuit_vault.repair import repair_circuit, repair_file
@@ -266,6 +268,8 @@ def merge(
         return MergeResult(ok=False, backup_path=bak, message=str(exc))
 
     incoming_fmt = detect_format(incoming_proj)
+    incoming_names = set(list_circuits(incoming_proj))
+    incoming_lib_ids = _declared_lib_ids(incoming_proj)
     format_warning: str | None = None
     if target_fmt != incoming_fmt:
         format_warning = (
@@ -279,33 +283,38 @@ def merge(
     pulled: list[str] = []
     unresolved: list[str] = []
 
-    def need_dep(dep: str) -> bool:
-        if dep not in target_names:
-            return True
-        return not validate_circuit(target, dep).ok
-
+    # Always pull transitive deps from the source file so the merged circuit
+    # keeps the same subcircuits (AND_GATE, FULL_ADDER, …) as in file 1.
+    # Missing deps in the target are the usual cause of “gates vanished” after
+    # open-in-Logisim / cleanup; overwriting with source deps matches clash_policy.
     expanded = list(to_merge)
-    for name in list(to_merge):
-        for dep in graph.get(name, set()):
-            if need_dep(dep):
-                if dep in by_name and by_name[dep].xml_bytes is not None:
-                    if dep not in expanded:
-                        expanded.append(dep)
-                        pulled.append(dep)
-                else:
-                    # try extract from incoming project
-                    try:
-                        xml = extract_circuit_raw_bytes(incoming_proj, dep)
-                        by_name[dep] = IncomingCircuit(
-                            name=dep,
-                            health=HealthState.NO_FINAL,
-                            xml_bytes=xml,
-                        )
-                        if dep not in expanded:
-                            expanded.append(dep)
-                            pulled.append(dep)
-                    except (KeyError, ParseError):
-                        unresolved.append(dep)
+    seen = set(expanded)
+    stack = list(to_merge)
+    while stack:
+        name = stack.pop()
+        for dep in sorted(graph.get(name, set())):
+            if dep in seen:
+                continue
+            if dep in by_name and by_name[dep].xml_bytes is not None:
+                seen.add(dep)
+                expanded.append(dep)
+                if dep not in to_merge:
+                    pulled.append(dep)
+                stack.append(dep)
+                continue
+            try:
+                xml = extract_circuit_raw_bytes(incoming_proj, dep)
+                by_name[dep] = IncomingCircuit(
+                    name=dep,
+                    health=HealthState.NO_FINAL,
+                    xml_bytes=xml,
+                )
+                seen.add(dep)
+                expanded.append(dep)
+                pulled.append(dep)
+                stack.append(dep)
+            except (KeyError, ParseError):
+                unresolved.append(dep)
 
     # Topo: deps before dependents using incoming graph
     ordered = _topo_available(expanded, graph)
@@ -321,7 +330,17 @@ def merge(
             if circ is None or circ.xml_bytes is None:
                 skipped.append(name)
                 continue
+            # Exact source bytes — do not re-serialize or “snap” wires.
+            # Auto connection repair was rewriting good circuits (every wire
+            # endpoint moved) and made merges look like lost connections.
             xml = circ.xml_bytes
+            # Evolution often writes <comp lib="13" name="AND_GATE"/> without a
+            # matching <lib name="13">. In file 1 Logisim still resolves it; after
+            # paste into file 2 those blocks vanish. Strip orphan lib= when the
+            # name is a circuit in the source project and lib id is undeclared.
+            xml, _norm = _normalize_project_subcircuit_refs(
+                xml, incoming_names, declared_libs=incoming_lib_ids
+            )
             final_name = name
             exists = name in set(list_circuits(project))
 
@@ -367,6 +386,14 @@ def merge(
         f"Imported {len(merged)} circuit(s). "
         "Your other circuits were left untouched."
     )
+    if pulled:
+        msg += f" Also brought {len(pulled)} dependenc{'y' if len(pulled)==1 else 'ies'} from the source file."
+    if unresolved:
+        msg += (
+            " Warning: missing in source: "
+            + ", ".join(sorted(set(unresolved)))
+            + " — open Logisim may drop those blocks."
+        )
     if format_warning:
         msg = f"{msg} {format_warning}"
 
@@ -381,6 +408,60 @@ def merge(
         message=msg,
         format_warning=format_warning,
     )
+
+
+def _declared_lib_ids(project) -> set[str]:
+    """Return ``name`` attrs of top-level ``<lib>`` entries (e.g. {\"0\",\"1\",…})."""
+    from lxml import etree
+
+    ids: set[str] = set()
+    for el in project.root.iterchildren():
+        if etree.QName(el).localname != "lib":
+            continue
+        nid = el.get("name")
+        if nid is not None:
+            ids.add(str(nid).strip())
+    return ids
+
+
+def _normalize_project_subcircuit_refs(
+    xml_bytes: bytes,
+    circuit_names: set[str],
+    *,
+    declared_libs: set[str] | None = None,
+) -> tuple[bytes, list[str]]:
+    """
+    Strip orphan ``lib=`` on comps that name a circuit in *circuit_names*.
+
+    Logisim Evolution may tag same-project subcircuits with lib=\"10\"+ without
+    writing a matching ``<lib>`` entry. Those survive in the original file but
+    drop out after merge into another .circ.
+    """
+    notes: list[str] = []
+    try:
+        el = parse_circuit_bytes(xml_bytes.strip())
+    except ParseError:
+        return xml_bytes, notes
+
+    self_name = el.get("name")
+    stripped = 0
+    for comp in el.iter("comp"):
+        name = comp.get("name")
+        if not name or name == self_name or name not in circuit_names:
+            continue
+        lib = comp.get("lib")
+        if lib is None or str(lib).strip() == "":
+            continue
+        lib_s = str(lib).strip()
+        # Keep real library comps (Wiring/Gates/…). Only strip undeclared ids.
+        if declared_libs is not None and lib_s in declared_libs:
+            continue
+        del comp.attrib["lib"]
+        stripped += 1
+    if not stripped:
+        return xml_bytes, notes
+    notes.append(f"normalized {stripped} subcircuit lib ref(s)")
+    return circuit_to_xml_bytes(el), notes
 
 
 def _topo_available(nodes: list[str], graph: dict[str, set[str]]) -> list[str]:
